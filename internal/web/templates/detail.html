@@ -1,0 +1,122 @@
+{{define "content"}}
+<div class="detail-standalone-container">
+  <!-- Top Header Bar (Clean standalone header, no banner, no misalignments) -->
+  <header class="detail-standalone-header">
+    <div class="detail-header-left">
+      <div class="detail-header-badges">
+        <span class="detail-badge-title">日志详情</span>
+        <span class="level level-{{.Detail.Level}}">{{.Detail.Level}}</span>
+      </div>
+      <div class="detail-header-id-group">
+        <span class="detail-event-id cell-mono" id="standalone-event-id">{{.Detail.EventID}}</span>
+        <button type="button" class="btn btn-ghost btn-xs" data-copy="#standalone-event-id">复制 ID</button>
+      </div>
+    </div>
+    <div class="detail-header-right">
+      {{if .BackURL}}
+      <a class="btn btn-ghost btn-xs" href="{{.BackURL}}">← 返回列表</a>
+      {{end}}
+      <button type="button" class="btn btn-ghost btn-xs" onclick="window.close();">关闭窗口</button>
+    </div>
+  </header>
+
+  <!-- Card 1: 元数据概览与错误堆栈 -->
+  <section class="card detail-standalone-card">
+    <div class="card-header">
+      <h2>元数据概览与错误堆栈</h2>
+      <button type="button" class="btn btn-ghost btn-xs" data-copy="#standalone-error-stack">复制堆栈</button>
+    </div>
+    <div class="card-body" style="padding: 0;">
+      <!-- Perfectly balanced 4-column overview grid without border bugs -->
+      <div class="overview-grid">
+        <div class="overview-cell">
+          <div class="cell-label">发生时间</div>
+          <div class="cell-value cell-mono">{{formatTime .Detail.EventTime}}</div>
+        </div>
+        <div class="overview-cell">
+          <div class="cell-label">接收时间</div>
+          <div class="cell-value cell-mono">{{formatTime .Detail.ReceivedAt}}</div>
+        </div>
+        <div class="overview-cell">
+          <div class="cell-label">所属项目</div>
+          <div class="cell-value">{{.Detail.ProjectKey}}</div>
+        </div>
+        <div class="overview-cell">
+          <div class="cell-label">运行节点</div>
+          <div class="cell-value">{{.Detail.NodeKey}}</div>
+        </div>
+
+        <div class="overview-cell">
+          <div class="cell-label">请求来源 IP</div>
+          <div class="cell-value cell-mono">{{.Detail.RequestIP}}</div>
+        </div>
+        <div class="overview-cell">
+          <div class="cell-label">用户</div>
+          <div class="cell-value">{{if .Detail.Member}}{{.Detail.Member}}{{else}}-{{end}}</div>
+        </div>
+        <div class="overview-cell">
+          <div class="cell-label">Session ID</div>
+          <div class="cell-value cell-mono">{{if .Detail.SessionID}}{{.Detail.SessionID}}{{else}}-{{end}}</div>
+        </div>
+        <div class="overview-cell">
+          <div class="cell-label">请求方法</div>
+          <div class="cell-value cell-mono">{{if .Detail.RequestMethod}}{{.Detail.RequestMethod}}{{else}}-{{end}}</div>
+        </div>
+        <div class="overview-cell span-2">
+          <div class="cell-label">错误场景</div>
+          <div class="cell-value">{{if .Detail.ErrorScene}}{{.Detail.ErrorScene}}{{else}}-{{end}}</div>
+        </div>
+
+        <div class="overview-cell span-2">
+          <div class="cell-label">请求完整 URL</div>
+          <div class="cell-value cell-mono">{{if .Detail.RequestURL}}{{.Detail.RequestURL}}{{else}}-{{end}}</div>
+        </div>
+
+        <div class="overview-cell span-4">
+          <div class="cell-label">错误信息</div>
+          <div class="cell-value error-message-text">{{if .Detail.ErrorMessage}}{{.Detail.ErrorMessage}}{{else}}-{{end}}</div>
+        </div>
+
+        <div class="overview-cell span-2">
+          <div class="cell-label">错误文件</div>
+          <div class="cell-value cell-mono">{{if .Detail.ErrorFile}}{{.Detail.ErrorFile}}{{else}}-{{end}}</div>
+        </div>
+        <div class="overview-cell span-2">
+          <div class="cell-label">错误行号</div>
+          <div class="cell-value cell-mono">{{if .Detail.ErrorLine}}{{.Detail.ErrorLine}}{{else}}-{{end}}</div>
+        </div>
+      </div>
+
+      <!-- Error Stack (no inner scrollbar, expands naturally) -->
+      <div class="detail-card-stack-section">
+        <pre class="code-viewer code-viewer-unbound" id="standalone-error-stack">{{if .Detail.ErrorStack}}{{.Detail.ErrorStack}}{{else}}（无错误堆栈）{{end}}</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- Card 2: 请求数据 (参数与 Headers 并排展示) -->
+  <section class="card detail-standalone-card">
+    <div class="card-header">
+      <h2>请求数据 (Request Data)</h2>
+    </div>
+    <div class="card-body" style="padding: 16px;">
+      <div class="dual-code-container">
+        <div class="dual-code-pane">
+          <div class="detail-section-header">
+            <span class="detail-section-title">请求参数 (Request Params)</span>
+            <button type="button" class="btn btn-ghost btn-xs" data-copy="#standalone-request-params">复制参数</button>
+          </div>
+          <pre class="code-viewer code-viewer-unbound" id="standalone-request-params">{{if .Detail.RequestParams}}{{prettyJSON .Detail.RequestParams}}{{else}}无参数{{end}}</pre>
+        </div>
+        <div class="dual-code-pane">
+          <div class="detail-section-header">
+            <span class="detail-section-title">请求 Header (Request Headers)</span>
+            <button type="button" class="btn btn-ghost btn-xs" data-copy="#standalone-request-headers">复制 Header</button>
+          </div>
+          <pre class="code-viewer code-viewer-unbound" id="standalone-request-headers">{{if .Detail.RequestHeaders}}{{prettyJSON .Detail.RequestHeaders}}{{else}}无 Header{{end}}</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+{{end}}

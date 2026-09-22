@@ -1,0 +1,45 @@
+{{define "layout"}}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} · logd</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body class="{{if .ShowNav}}app-shell{{else if eq .Active "detail"}}detail-shell{{else}}auth-wrapper{{end}}">
+  {{if .ShowNav}}
+  <header class="topbar">
+    <div class="topbar-left">
+      <a class="brand" href="/admin/logs">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="4 17 10 11 4 5"></polyline>
+            <line x1="12" y1="19" x2="20" y2="19"></line>
+          </svg>
+        </div>
+        <span>logd</span>
+        <span class="brand-badge">Platform</span>
+      </a>
+      <nav>
+        <a class="{{if eq .Active "logs"}}active{{end}}" href="/admin/logs">日志监控</a>
+        <a class="{{if eq .Active "settings"}}active{{end}}" href="/admin/settings">系统设置</a>
+      </nav>
+    </div>
+    <div class="topbar-right">
+      <div class="live-indicator">
+        <span class="live-dot"></span>
+        <span>正常运行</span>
+      </div>
+      <form method="post" action="/admin/logout">
+        <input type="hidden" name="_csrf" value="{{.CSRF}}">
+        <button class="btn btn-ghost btn-xs" type="submit">退出登录</button>
+      </form>
+    </div>
+  </header>
+  {{end}}
+  {{template "content" .}}
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>
+{{end}}

@@ -1,0 +1,30 @@
+admin:
+  password: "replace-me"
+  session_secret: "replace-with-at-least-32-random-characters"
+
+server:
+  listen: "127.0.0.1:7878"
+  read_header_timeout_seconds: 5
+  read_timeout_seconds: 30
+  write_timeout_seconds: 30
+  idle_timeout_seconds: 60
+  shutdown_timeout_seconds: 15
+
+database:
+  host: "127.0.0.1"
+  port: 5432
+  user: "logd"
+  password: "replace-me"
+  name: "logd"
+  sslmode: "disable"
+  max_conns: 10
+  min_conns: 1
+  connect_timeout_seconds: 5
+
+queue:
+  capacity: 50000
+  write_batch_size: 1000
+  flush_interval_ms: 1000
+  retry_initial_ms: 200
+  retry_max_ms: 5000
+  shutdown_drain_seconds: 10

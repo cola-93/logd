@@ -1,0 +1,14 @@
+config.local.yml
+DESIGN.md
+.cache/
+.gocache/
+.gotmp/
+.playwright-cli/
+.vscode/
+
+logs/
+*.log
+
+/logd
+/logd.exe
+/logd-linux-*

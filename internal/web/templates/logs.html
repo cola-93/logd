@@ -1,0 +1,301 @@
+{{define "content"}}
+<div class="workspace-container">
+  <!-- Left Sidebar: Attribute Tree (OpenAI Directory Style) -->
+  <aside class="sidebar-panel">
+    <div class="sidebar-header">
+      <div class="sidebar-title">
+        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <span>属性目录</span>
+      </div>
+      <div class="sidebar-actions">
+        <button type="button" class="sidebar-btn" id="tree-toggle-all" title="全部展开/折叠">折叠全部</button>
+        <button type="button" class="sidebar-btn reset-btn" id="tree-reset-btn" title="查看全部日志">全部日志</button>
+      </div>
+    </div>
+    <div class="sidebar-search">
+      <input type="text" id="tree-search-input" placeholder="搜索目录..." autocomplete="off">
+    </div>
+    <div class="sidebar-tree" id="attribute-tree">
+      {{if not .Tree}}
+      <div style="padding: 24px 12px; text-align: center; color: var(--text-muted); font-size: 12px;">暂无属性目录数据</div>
+      {{else}}
+      <ul class="tree-list">
+        {{range .Tree}}
+        <li class="tree-node tree-project is-open" data-type="project" data-project="{{.ProjectKey}}">
+          <div class="tree-row {{if and (eq $.Filters.ProjectKey .ProjectKey) (not $.Filters.NodeKey) (not $.Filters.Level)}}active{{end}}">
+            <button type="button" class="tree-chevron" aria-label="展开/折叠">▾</button>
+            <div class="tree-label-content" data-project="{{.ProjectKey}}" data-node="" data-level="">
+              <span class="tree-tag tag-project">项目</span>
+              <span class="tree-label-text">{{.ProjectKey}}</span>
+            </div>
+          </div>
+          {{if .Nodes}}
+          <ul class="tree-sublist">
+            {{range .Nodes}}
+            <li class="tree-node tree-source is-open" data-type="node" data-project="{{.ProjectKey}}" data-node="{{.NodeKey}}">
+              <div class="tree-row {{if and (eq $.Filters.ProjectKey .ProjectKey) (eq $.Filters.NodeKey .NodeKey) (not $.Filters.Level)}}active{{end}}">
+                <button type="button" class="tree-chevron" aria-label="展开/折叠">▾</button>
+                <div class="tree-label-content" data-project="{{.ProjectKey}}" data-node="{{.NodeKey}}" data-level="">
+                  <span class="tree-tag tag-node">节点</span>
+                  <span class="tree-label-text">{{.NodeKey}}</span>
+                </div>
+              </div>
+              {{if .Levels}}
+              <ul class="tree-sublist">
+                {{range .Levels}}
+                <li class="tree-node tree-level is-leaf" data-type="level" data-project="{{.ProjectKey}}" data-node="{{.NodeKey}}" data-level="{{.Level}}">
+                  <div class="tree-row {{if and (eq $.Filters.ProjectKey .ProjectKey) (eq $.Filters.NodeKey .NodeKey) (eq $.Filters.Level .Level)}}active{{end}}">
+                    <span class="tree-bullet">•</span>
+                    <div class="tree-label-content" data-project="{{.ProjectKey}}" data-node="{{.NodeKey}}" data-level="{{.Level}}">
+                      <span class="level level-{{.Level}}">{{.Level}}</span>
+                    </div>
+                  </div>
+                </li>
+                {{end}}
+              </ul>
+              {{end}}
+            </li>
+            {{end}}
+          </ul>
+          {{end}}
+        </li>
+        {{end}}
+      </ul>
+      {{end}}
+    </div>
+
+    <!-- Bottom Left: Version & Copyright Info -->
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-row">
+        <span class="badge-version">v{{.Version}}</span>
+        <span class="footer-author">Powered by <strong>Cocacola</strong></span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Right Main Area: Top Filter + Table, Bottom Detail Card -->
+  <main class="main-viewport">
+    {{if .Error}}<div class="msg-alert error" style="margin: 8px 14px 0;">{{.Error}}</div>{{end}}
+    {{if .Notice}}<div class="msg-alert notice log-delete-toast" role="status">{{.Notice}}</div>{{end}}
+
+    <!-- Top Filter Bar -->
+    <form class="filter-container" id="log-filter-form" method="get" action="/admin/logs" data-csrf="{{.CSRF}}">
+      <div class="filter-input-group">
+        <span>开始</span>
+        <input type="datetime-local" name="start_time" value="{{.Filters.StartTime}}">
+      </div>
+      <div class="filter-input-group">
+        <span>结束</span>
+        <input type="datetime-local" name="end_time" value="{{.Filters.EndTime}}">
+      </div>
+      <input type="hidden" name="project_key" id="filter-project" value="{{.Filters.ProjectKey}}">
+      <div class="filter-input-group">
+        <span>节点</span>
+        <input name="node_key" id="filter-node" value="{{.Filters.NodeKey}}" placeholder="包含匹配" style="width: 85px;">
+      </div>
+      <div class="filter-input-group">
+        <span>级别</span>
+        <select name="level" id="filter-level">
+          <option value="">全部</option>
+          {{range .Levels}}
+          <option value="{{.}}" {{if eq . $.Filters.Level}}selected{{end}}>{{.}}</option>
+          {{end}}
+        </select>
+      </div>
+      <div class="filter-input-group">
+        <span>场景</span>
+        <input name="error_scene" value="{{.Filters.ErrorScene}}" placeholder="包含匹配" style="width: 75px;">
+      </div>
+      <div class="filter-input-group">
+        <span>用户</span>
+        <input name="member" value="{{.Filters.Member}}" placeholder="精确匹配" style="width: 80px;">
+      </div>
+      <div class="filter-input-group">
+        <span>Session ID</span>
+        <input name="session_id" value="{{.Filters.SessionID}}" placeholder="精确匹配" style="width: 80px;">
+      </div>
+      <div class="filter-input-group">
+        <span>IP</span>
+        <input name="request_ip" value="{{.Filters.RequestIP}}" placeholder="127.0.0.1" style="width: 80px;">
+      </div>
+      <button class="btn btn-primary btn-xs" type="submit">查询</button>
+      <button class="btn btn-ghost btn-xs" type="button" id="log-filter-reset">重置</button>
+
+      <!-- Batch Actions and Loaded Count -->
+      <div class="filter-pagination-right">
+        <button class="btn btn-danger btn-xs" type="button" id="delete-filter-btn">删除所有符合条件的日志</button>
+        <button class="btn btn-danger btn-xs" type="button" id="batch-delete-btn" disabled>批量删除</button>
+        <span class="pagination-info">已加载 <strong id="logs-count">{{len .Logs}}</strong> 条</span>
+      </div>
+    </form>
+
+    <!-- Middle: Logs Table -->
+    <div class="logs-table-container">
+      <table class="logs-data-table" id="logs-table">
+        <thead>
+          <tr>
+            <th class="col-select"><input type="checkbox" id="logs-select-all" aria-label="全选当前列表"></th>
+            <th class="col-time">时间</th>
+            <th class="col-project">项目</th>
+            <th class="col-node">节点</th>
+            <th class="col-level">级别</th>
+            <th class="col-session">Session ID</th>
+            <th class="col-scene">错误场景</th>
+            <th class="col-msg">错误信息</th>
+            <th class="col-ip">请求 IP</th>
+            <th class="col-action">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Logs}}
+          <tr class="log-row{{if .Locked}} is-locked{{end}}"
+              data-event-id="{{.EventID}}"
+              data-level="{{.Level}}"
+              data-event-time="{{.EventTime.Format "2006-01-02T15:04:05.999999999Z07:00"}}"
+              data-locked="{{.Locked}}"
+              data-detail-url="{{.DetailURL}}">
+            <td class="col-select">
+              <div class="log-select-cell">
+                <button type="button"
+                        class="log-lock-btn"
+                        title="{{if .Locked}}解锁记录{{else}}锁定记录{{end}}"
+                        aria-label="{{if .Locked}}解锁记录{{else}}锁定记录{{end}}"
+                        aria-pressed="{{.Locked}}">
+                  <svg class="log-lock-icon log-lock-open" viewBox="0 0 24 24" aria-hidden="true">
+                    <rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+                  </svg>
+                  <svg class="log-lock-icon log-lock-closed" viewBox="0 0 24 24" aria-hidden="true">
+                    <rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                  </svg>
+                </button>
+                <input type="checkbox" class="log-select-checkbox" aria-label="选择日志">
+              </div>
+            </td>
+            <td class="col-time cell-mono">{{formatTime .EventTime}}</td>
+            <td class="col-project" title="{{.ProjectKey}}">{{.ProjectKey}}</td>
+            <td class="col-node" title="{{.NodeKey}}">{{.NodeKey}}</td>
+            <td class="col-level"><span class="level level-{{.Level}}">{{.Level}}</span></td>
+            <td class="col-session cell-mono" title="{{.SessionID}}">{{.SessionID}}</td>
+            <td class="col-scene" title="{{.ErrorScene}}">{{.ErrorScene}}</td>
+            <td class="col-msg" title="{{.ErrorMessage}}">{{.ErrorMessage}}</td>
+            <td class="col-ip cell-mono">{{.RequestIP}}</td>
+            <td class="col-action" onclick="event.stopPropagation();">
+              <a class="btn btn-ghost btn-xs" href="{{.DetailURL}}" target="_blank" rel="noopener noreferrer" title="新窗口打开完整详情">
+                新窗口 ↗
+              </a>
+            </td>
+          </tr>
+          {{else}}
+          <tr>
+            <td colspan="10" style="text-align: center; padding: 48px 16px; color: var(--text-muted);">
+              没有符合条件的日志记录
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      <div class="logs-load-more" id="logs-load-more" data-next-url="{{.NextURL}}"{{if not .NextURL}} hidden{{end}}>
+        <div class="panel-spinner"></div>
+        <span>加载中...</span>
+      </div>
+    </div>
+
+    <!-- Bottom: Detail Card Panel (Split View with 2 Tabs) -->
+    <section class="detail-panel" id="detail-card-panel">
+      <div class="detail-panel-header">
+        <div class="detail-panel-left">
+          <span class="detail-title-tag">详情</span>
+          <span class="detail-panel-id" id="card-event-id">-</span>
+          <button type="button" class="btn btn-ghost btn-xs" id="card-copy-id-btn">复制 ID</button>
+          <span class="level" id="card-level-badge">-</span>
+          <a class="btn btn-ghost btn-xs" id="card-open-new-window" href="#" target="_blank" rel="noopener noreferrer">
+            独立窗口 ↗
+          </a>
+        </div>
+        <div class="detail-panel-tabs">
+          <button type="button" class="detail-tab-btn active" data-tab="tab-overview-stack">概览与堆栈</button>
+          <button type="button" class="detail-tab-btn" data-tab="tab-request-data">请求参数与 Header</button>
+        </div>
+      </div>
+
+      <div class="detail-panel-content">
+        <div class="panel-loading" id="card-loading-state" style="display: none;">
+          <div class="panel-spinner"></div>
+          <span>加载中...</span>
+        </div>
+
+        <!-- Tab 1: Overview & Error Stack Merged -->
+        <div class="tab-pane active" id="tab-overview-stack">
+          <div class="overview-grid detail-panel-grid">
+            <div class="overview-cell">
+              <div class="cell-label">接收时间</div>
+              <div class="cell-value cell-mono" id="card-received-at">-</div>
+            </div>
+            <div class="overview-cell">
+              <div class="cell-label">错误场景</div>
+              <div class="cell-value" id="card-scene">-</div>
+            </div>
+            <div class="overview-cell">
+              <div class="cell-label">用户</div>
+              <div class="cell-value" id="card-member">-</div>
+            </div>
+            <div class="overview-cell">
+              <div class="cell-label">Session ID</div>
+              <div class="cell-value cell-mono" id="card-session">-</div>
+            </div>
+            <div class="overview-cell span-2">
+              <div class="cell-label">错误位置 (文件:行号)</div>
+              <div class="cell-value cell-mono" id="card-location">-</div>
+            </div>
+            <div class="overview-cell span-2">
+              <div class="cell-label">请求完整 URL</div>
+              <div class="cell-value cell-mono" id="card-url">-</div>
+            </div>
+            <div class="overview-cell span-4">
+              <div class="cell-label">错误信息</div>
+              <div class="cell-value error-message-text" id="card-message">-</div>
+            </div>
+          </div>
+
+          <div class="detail-section-header">
+            <span class="detail-section-title">错误堆栈 (Error Stack)</span>
+            <button type="button" class="btn btn-ghost btn-xs" data-copy="#card-error-stack">复制堆栈</button>
+          </div>
+          <pre class="code-viewer" id="card-error-stack">-</pre>
+        </div>
+
+        <!-- Tab 2: Request Params & Headers Merged -->
+        <div class="tab-pane" id="tab-request-data">
+          <div class="dual-code-container">
+            <div class="dual-code-pane">
+              <div class="detail-section-header">
+                <span class="detail-section-title">请求参数 (Request Params)</span>
+                <button type="button" class="btn btn-ghost btn-xs" data-copy="#card-request-params">复制参数</button>
+              </div>
+              <pre class="code-viewer" id="card-request-params">-</pre>
+            </div>
+            <div class="dual-code-pane">
+              <div class="detail-section-header">
+                <span class="detail-section-title">请求 Header (Request Headers)</span>
+                <button type="button" class="btn btn-ghost btn-xs" data-copy="#card-request-headers">复制 Header</button>
+              </div>
+              <pre class="code-viewer" id="card-request-headers">-</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="tree-context-menu" id="tree-context-menu" hidden>
+  <button type="button" class="tree-context-item" id="tree-context-delete">删除目录及日志</button>
+</div>
+<div class="tree-context-menu log-context-menu" id="log-context-menu" hidden>
+  <button type="button" class="tree-context-item" id="log-context-delete">删除选中日志</button>
+  <button type="button" class="tree-context-item" id="log-context-lock">锁定选中记录</button>
+</div>
+{{end}}

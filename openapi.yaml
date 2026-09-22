@@ -1,0 +1,1553 @@
+openapi: 3.0.3
+info:
+  title: logd API
+  description: |
+    分布式 PHP 日志中心 logd 的接口定义。
+
+    测试顺序建议：
+    1. 调用后台登录接口获取 logd_admin Cookie 和 csrf_token。
+    2. 将 csrf_token 保存到接口调试软件环境中。
+    3. 使用后台会话 Cookie 测试日志查询、Token、设置和状态接口。
+    4. 使用创建 Token 返回的明文 Token 测试日志提交接口。
+  version: 1.0.0
+  contact:
+    name: logd
+servers:
+  - url: http://127.0.0.1:7878
+    description: 默认本地监听地址
+tags:
+  - name: Ingest
+    description: PHP 日志提交接口
+  - name: Ops
+    description: 健康检查、就绪检查和 Prometheus 指标
+  - name: Admin Auth
+    description: 后台登录和退出
+  - name: Admin Logs
+    description: 日志列表和详情查询
+  - name: Admin Log Deletes
+    description: 后台日志删除操作
+  - name: Admin Project Tokens
+    description: 项目 Token 管理
+  - name: Admin Settings
+    description: 系统设置
+  - name: Admin Status
+    description: 系统状态
+paths:
+  /api/v1/logs/batch:
+    post:
+      tags:
+        - Ingest
+      summary: 提交日志批次
+      description: |
+        PHP 站点使用项目 Token 提交日志批次。
+
+        整个批次完整校验，任意一条日志不合法时整个请求返回 400，不支持部分成功。
+        成功返回 202，只表示日志已经进入 logd 内存队列，不表示 PostgreSQL 已提交。
+      operationId: ingestLogBatch
+      security:
+        - projectToken: []
+      parameters:
+        - name: Content-Encoding
+          in: header
+          required: false
+          description: 设置为 gzip 时表示请求体为 gzip 压缩后的 JSON。
+          schema:
+            type: string
+            enum:
+              - gzip
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogBatchRequest'
+            example:
+              node_key: node-sh-03
+              logs:
+                - event_id: 4f5b4fd5-42b8-47d5-a0db-0273cd76f574
+                  event_time: '2026-09-21T12:30:00.123+08:00'
+                  level: ERROR
+                  request_ip: 1.2.3.4
+                  member: '10001'
+                  session_id: 2f3d9f38-1b3d-4e5c-9e74-9dc49b4f2fd0
+                  request_method: POST
+                  request_url: https://api.example.com/order/create
+                  request_headers:
+                    content-type: application/json
+                    user-agent: PHP/8.3
+                  request_params:
+                    order_id: 10001
+                  error_scene: payment.callback.signature_invalid
+                  error_message: 支付回调验签失败
+                  error_file: /www/shop/app/service/Payment.php
+                  error_line: 126
+                  error_stack: '...'
+      responses:
+        '202':
+          description: 批次已进入内存队列
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestAccepted'
+              example:
+                accepted: 1
+        '400':
+          description: JSON、请求体或字段校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: INVALID_LOG
+                  message: event_id is duplicated in batch
+                  index: 1
+                  field: event_id
+        '401':
+          description: 项目 Token 缺失或无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: UNAUTHORIZED
+                  message: invalid bearer token
+        '403':
+          description: 项目已禁用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: PROJECT_DISABLED
+                  message: project token is disabled
+        '413':
+          description: 解压后的请求体超过 5MB
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: BODY_TOO_LARGE
+                  message: decompressed request body exceeds 5MB
+        '500':
+          description: 服务内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: INTERNAL_ERROR
+                  message: internal error
+        '503':
+          description: 接收队列已满
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: QUEUE_FULL
+                  message: ingest queue is full
+
+  /healthz:
+    get:
+      tags:
+        - Ops
+      summary: 进程存活检查
+      operationId: getHealthz
+      responses:
+        '200':
+          description: 进程存活
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+
+  /readyz:
+    get:
+      tags:
+        - Ops
+      summary: 服务就绪检查
+      description: 检查分区是否就绪以及 PostgreSQL 是否可连接。
+      operationId: getReadyz
+      responses:
+        '200':
+          description: 服务已就绪
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ready
+        '503':
+          description: 服务尚未就绪
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: not_ready
+
+  /metrics:
+    get:
+      tags:
+        - Ops
+      summary: Prometheus 文本指标
+      operationId: getMetrics
+      responses:
+        '200':
+          description: Prometheus text exposition format
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                logd_queue_depth 0
+                logd_queue_capacity 50000
+                logd_queue_rejected_total 0
+
+  /api/v1/admin/login:
+    post:
+      tags:
+        - Admin Auth
+      summary: 后台登录
+      description: 登录成功后服务端设置 logd_admin HttpOnly Cookie，并返回后续修改请求所需的 csrf_token。
+      operationId: adminLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminLoginRequest'
+            example:
+              password: admin123
+      responses:
+        '200':
+          description: 登录成功
+          headers:
+            Set-Cookie:
+              description: logd_admin 后台会话 Cookie。
+              schema:
+                type: string
+                example: logd_admin=...; Path=/; HttpOnly; SameSite=Lax
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminLoginResponse'
+              example:
+                csrf_token: base64url-token
+        '400':
+          description: 请求体不是有效 JSON
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: INVALID_JSON
+                  message: 请求体不是有效的 JSON
+        '401':
+          description: 访问密码错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: INVALID_PASSWORD
+                  message: 访问密码错误
+        '500':
+          description: 创建会话失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: INTERNAL_ERROR
+                  message: 创建会话失败
+
+  /api/v1/admin/logout:
+    post:
+      tags:
+        - Admin Auth
+      summary: 后台退出
+      operationId: adminLogout
+      security:
+        - adminSession: []
+          csrfToken: []
+      responses:
+        '204':
+          description: 已退出
+        '401':
+          $ref: '#/components/responses/AdminUnauthorized'
+        '403':
+          $ref: '#/components/responses/AdminCSRFInvalid'
+
+  /api/v1/logs:
+    get:
+      tags:
+        - Admin Logs
+      summary: 查询日志列表
+      description: |
+        使用后台会话查询日志摘要。
+
+        start_time 和 end_time 必填，单次查询最大时间跨度为 31 天。
+        列表不返回 request_headers、request_params、error_file、error_line 和 error_stack。
+      operationId: listLogs
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: '#/components/parameters/StartTime'
+        - $ref: '#/components/parameters/EndTime'
+        - $ref: '#/components/parameters/ProjectKey'
+        - $ref: '#/components/parameters/NodeKey'
+        - $ref: '#/components/parameters/Level'
+        - $ref: '#/components/parameters/ErrorScene'
+        - $ref: '#/components/parameters/RequestIP'
+        - $ref: '#/components/parameters/Member'
+        - $ref: '#/components/parameters/SessionID'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogListResponse'
+              example:
+                items:
+                  - event_id: 4f5b4fd5-42b8-47d5-a0db-0273cd76f574
+                    event_time: '2026-09-21T12:30:00.123+08:00'
+                    received_at: '2026-09-21T12:30:00.456+08:00'
+                    project_key: shop-api
+                    node_key: node-sh-03
+                    level: ERROR
+                    request_ip: 1.2.3.4
+                    member: '10001'
+                    session_id: 2f3d9f38-1b3d-4e5c-9e74-9dc49b4f2fd0
+                    request_method: POST
+                    request_url: https://api.example.com/order/create
+                    error_scene: payment.callback.signature_invalid
+                    error_message: 支付回调验签失败
+                next_cursor: b3BhcXVlLWN1cnNvcg
+                has_more: true
+        '400':
+          description: 查询参数无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: INVALID_QUERY
+                  message: start_time 和 end_time 不能为空
+        '401':
+          $ref: '#/components/responses/AdminUnauthorized'
+        '500':
+          description: 查询日志失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: INTERNAL_ERROR
+                  message: 查询日志失败
+
+  /api/v1/logs/{event_id}:
+    get:
+      tags:
+        - Admin Logs
+      summary: 查询日志详情
+      description: event_id、level 和 event_time 必须同时提交，后两者用于分区裁剪。
+      operationId: getLogDetail
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: '#/components/parameters/EventID'
+        - name: level
+          in: query
+          required: true
+          description: 日志级别，必须与 event_time 一起提交。
+          schema:
+            $ref: '#/components/schemas/Level'
+        - name: event_time
+          in: query
+          required: true
+          description: 日志事件时间，使用列表接口返回的 event_time。
+          schema:
+            type: string
+            format: date-time
+          example: '2026-09-21T12:30:00.123+08:00'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogDetail'
+        '400':
+          description: 查询参数无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: INVALID_QUERY
+                  message: event_id 无效
+        '401':
+          $ref: '#/components/responses/AdminUnauthorized'
+        '404':
+          description: 日志不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: NOT_FOUND
+                  message: 日志不存在
+        '500':
+          description: 读取日志详情失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: INTERNAL_ERROR
+                  message: 读取日志详情失败
+
+  /api/v1/admin/project-tokens:
+    get:
+      tags:
+        - Admin Project Tokens
+      summary: 获取项目 Token 列表
+      operationId: listProjectTokens
+      security:
+        - adminSession: []
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectTokenListResponse'
+        '401':
+          $ref: '#/components/responses/AdminUnauthorized'
+        '500':
+          description: 读取 Token 失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: INTERNAL_ERROR
+                  message: 读取 Token 失败
+    post:
+      tags:
+        - Admin Project Tokens
+      summary: 创建项目 Token
+      description: Token 明文只在创建响应中返回一次。
+      operationId: createProjectToken
+      security:
+        - adminSession: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectTokenRequest'
+            example:
+              project_key: shop-api
+              name: 商城 API
+              enabled: true
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateProjectTokenResponse'
+        '400':
+          description: 请求或 Token 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: INVALID_TOKEN
+                  message: 项目标识长度必须在 1 到 64 个字符之间
+        '401':
+          $ref: '#/components/responses/AdminUnauthorized'
+        '403':
+          $ref: '#/components/responses/AdminCSRFInvalid'
+        '500':
+          description: 创建 Token 失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/v1/admin/project-tokens/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TokenID'
+    patch:
+      tags:
+        - Admin Project Tokens
+      summary: 修改项目 Token
+      description: 只提交需要修改的字段。
+      operationId: updateProjectToken
+      security:
+        - adminSession: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectTokenRequest'
+            example:
+              project_key: shop-api-v2
+              name: 商城 API V2
+              enabled: false
+      responses:
+        '200':
+          description: 修改成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectToken'
+        '400':
+          description: Token ID 或字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: '#/components/responses/AdminUnauthorized'
+        '403':
+          $ref: '#/components/responses/AdminCSRFInvalid'
+        '404':
+          description: Token 不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: NOT_FOUND
+                  message: Token 不存在
+        '500':
+          description: 修改 Token 失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      tags:
+        - Admin Project Tokens
+      summary: 删除项目 Token
+      description: 删除为物理删除，删除后立即刷新内存缓存。
+      operationId: deleteProjectToken
+      security:
+        - adminSession: []
+          csrfToken: []
+      responses:
+        '204':
+          description: 删除成功
+        '400':
+          description: Token ID 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: INVALID_TOKEN_ID
+                  message: Token ID 无效
+        '401':
+          $ref: '#/components/responses/AdminUnauthorized'
+        '403':
+          $ref: '#/components/responses/AdminCSRFInvalid'
+        '404':
+          description: Token 不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: NOT_FOUND
+                  message: Token 不存在
+        '500':
+          description: 删除 Token 失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/v1/admin/settings:
+    get:
+      tags:
+        - Admin Settings
+      summary: 获取系统设置
+      operationId: getSettings
+      security:
+        - adminSession: []
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemSettings'
+              example:
+                retention_days: 30
+        '401':
+          $ref: '#/components/responses/AdminUnauthorized'
+        '500':
+          description: 读取系统设置失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    patch:
+      tags:
+        - Admin Settings
+      summary: 修改系统设置
+      operationId: updateSettings
+      security:
+        - adminSession: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSystemSettingsRequest'
+            example:
+              retention_days: 30
+      responses:
+        '200':
+          description: 修改成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemSettings'
+        '400':
+          description: 设置值无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                error:
+                  code: INVALID_SETTINGS
+                  message: 保留天数必须在 1 到 3650 之间
+        '401':
+          $ref: '#/components/responses/AdminUnauthorized'
+        '403':
+          $ref: '#/components/responses/AdminCSRFInvalid'
+        '500':
+          description: 保存系统设置失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/v1/admin/status:
+    get:
+      tags:
+        - Admin Status
+      summary: 获取系统状态
+      operationId: getStatus
+      security:
+        - adminSession: []
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatus'
+              example:
+                database_ok: true
+                queue_depth: 12
+                queue_capacity: 50000
+                retention_days: 30
+                last_write: '2026-09-22T11:30:00.123+08:00'
+                alerts:
+                  - key: queue_high
+                    message: 接收队列使用率超过 80%
+                    since: '2026-09-22T11:20:00+08:00'
+        '401':
+          $ref: '#/components/responses/AdminUnauthorized'
+
+  /admin/logs/delete-selected:
+    post:
+      tags:
+        - Admin Log Deletes
+      summary: 批量删除已选日志
+      description: 删除当前列表中已选中的日志记录。
+      operationId: deleteSelectedLogs
+      security:
+        - adminSession: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteSelectedLogsRequest'
+            example:
+              items:
+                - event_id: 4f5b4fd5-42b8-47d5-a0db-0273cd76f574
+                  level: ERROR
+                  event_time: '2026-09-21T12:30:00.123+08:00'
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteLogsResponse'
+              example:
+                deleted: 1
+                skipped_locked: 0
+        '400':
+          description: 请求体或日志定位信息无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: '#/components/responses/AdminUnauthorized'
+        '403':
+          $ref: '#/components/responses/AdminCSRFInvalid'
+        '500':
+          description: 删除日志失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /admin/logs/delete-filter:
+    post:
+      tags:
+        - Admin Log Deletes
+      summary: 删除当前筛选条件下的全部日志
+      description: 删除范围不受当前页面已加载条数限制。
+      operationId: deleteFilteredLogs
+      security:
+        - adminSession: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeleteFilteredLogsRequest'
+            example:
+              start_time: '2026-09-21T00:00:00+08:00'
+              end_time: '2026-09-22T00:00:00+08:00'
+              project_key: shop-api
+              node_key: node-sh-03
+              level: ERROR
+              error_scene: payment.callback
+              member: '10001'
+              session_id: 2f3d9f38-1b3d-4e5c-9e74-9dc49b4f2fd0
+              request_ip: 1.2.3.4
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteLogsResponse'
+              example:
+                deleted: 12
+                skipped_locked: 2
+        '400':
+          description: 筛选参数无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: '#/components/responses/AdminUnauthorized'
+        '403':
+          $ref: '#/components/responses/AdminCSRFInvalid'
+        '500':
+          description: 删除日志失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /admin/logs/delete-scope:
+    post:
+      tags:
+        - Admin Log Deletes
+      summary: 删除目录及范围内的日志
+      description: 按项目、节点或级别删除日志及对应属性目录。删除上级目录时同时删除所有下级目录。
+      operationId: deleteScopedLogs
+      security:
+        - adminSession: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeleteScopedLogsRequest'
+            example:
+              project_key: shop-api
+              node_key: node-sh-03
+              level: ERROR
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteLogsResponse'
+              example:
+                deleted: 3
+                skipped_locked: 1
+        '400':
+          description: 删除范围无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: '#/components/responses/AdminUnauthorized'
+        '403':
+          $ref: '#/components/responses/AdminCSRFInvalid'
+        '500':
+          description: 删除日志失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /admin/logs/lock-selected:
+    post:
+      tags:
+        - Admin Log Deletes
+      summary: 锁定或解锁已选日志
+      description: 锁定后的日志不能被批量删除、按条件删除或按目录范围删除。
+      operationId: lockSelectedLogs
+      security:
+        - adminSession: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LockSelectedLogsRequest'
+            example:
+              items:
+                - event_id: 4f5b4fd5-42b8-47d5-a0db-0273cd76f574
+                  level: ERROR
+                  event_time: '2026-09-21T12:30:00.123+08:00'
+              locked: true
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - updated
+                properties:
+                  updated:
+                    type: integer
+                    format: int64
+                    example: 1
+        '400':
+          description: 请求体或日志定位信息无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: '#/components/responses/AdminUnauthorized'
+        '403':
+          $ref: '#/components/responses/AdminCSRFInvalid'
+        '500':
+          description: 更新锁定状态失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+components:
+  securitySchemes:
+    projectToken:
+      type: http
+      scheme: bearer
+      description: 项目 Token，通过后台创建后只在创建响应中返回一次。
+    adminSession:
+      type: apiKey
+      in: cookie
+      name: logd_admin
+      description: 后台登录成功后由客户端保存的会话 Cookie。
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: 后台登录响应返回的 csrf_token，POST、PATCH 和 DELETE 请求必须携带。
+
+  parameters:
+    StartTime:
+      name: start_time
+      in: query
+      required: true
+      description: 开始时间，包含该时间。支持 RFC3339 或当前分区时区的本地时间。
+      schema:
+        type: string
+      example: '2026-09-21T00:00:00+08:00'
+    EndTime:
+      name: end_time
+      in: query
+      required: true
+      description: 结束时间，不包含该时间。与 start_time 最大间隔 31 天。
+      schema:
+        type: string
+      example: '2026-09-22T00:00:00+08:00'
+    ProjectKey:
+      name: project_key
+      in: query
+      required: false
+      description: 项目标识，精确匹配。
+      schema:
+        type: string
+      example: shop-api
+    NodeKey:
+      name: node_key
+      in: query
+      required: false
+      description: 节点标识，包含匹配，不区分大小写。
+      schema:
+        type: string
+      example: node-sh-03
+    Level:
+      name: level
+      in: query
+      required: false
+      description: 日志级别，精确匹配。
+      schema:
+        $ref: '#/components/schemas/Level'
+    ErrorScene:
+      name: error_scene
+      in: query
+      required: false
+      description: 错误场景，包含匹配，不区分大小写。
+      schema:
+        type: string
+      example: payment.callback.signature_invalid
+    RequestIP:
+      name: request_ip
+      in: query
+      required: false
+      description: 请求用户 IP，精确匹配。
+      schema:
+        type: string
+      example: 1.2.3.4
+    Member:
+      name: member
+      in: query
+      required: false
+      description: 用户信息，精确匹配。
+      schema:
+        type: string
+      example: '10001'
+    SessionID:
+      name: session_id
+      in: query
+      required: false
+      description: Session ID，精确匹配。
+      schema:
+        type: string
+      example: 2f3d9f38-1b3d-4e5c-9e74-9dc49b4f2fd0
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: 返回条数。
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: 上一页返回的 next_cursor。
+      schema:
+        type: string
+    EventID:
+      name: event_id
+      in: path
+      required: true
+      description: 日志事件 UUID。
+      schema:
+        type: string
+        format: uuid
+    TokenID:
+      name: id
+      in: path
+      required: true
+      description: 项目 Token 记录 UUID。
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    AdminUnauthorized:
+      description: 后台会话无效
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: admin session is invalid
+    AdminCSRFInvalid:
+      description: CSRF Token 无效
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: INVALID_CSRF
+              message: CSRF token is invalid
+
+  schemas:
+    Level:
+      type: string
+      enum:
+        - INFO
+        - WARN
+        - ERROR
+        - DEBUG
+
+    LogBatchRequest:
+      type: object
+      required:
+        - node_key
+        - logs
+      properties:
+        node_key:
+          type: string
+          minLength: 1
+          maxLength: 64
+          example: node-sh-03
+        logs:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/LogItem'
+
+    LogItem:
+      type: object
+      required:
+        - event_id
+        - event_time
+        - level
+        - request_ip
+        - request_method
+        - request_url
+        - error_scene
+        - error_message
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: 批次内不能重复。
+          example: 4f5b4fd5-42b8-47d5-a0db-0273cd76f574
+        event_time:
+          type: string
+          format: date-time
+          description: 不能晚于服务当前时间 5 分钟。ERROR 最大允许延迟 31 天，其他级别使用 retention_days。
+          example: '2026-09-21T12:30:00.123+08:00'
+        level:
+          $ref: '#/components/schemas/Level'
+        request_ip:
+          type: string
+          description: 合法 IPv4 或 IPv6。
+          example: 1.2.3.4
+        member:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: 可选用户信息，用于精确查询。
+          example: '10001'
+        session_id:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: 可选 Session ID，用于精确查询。
+          example: 2f3d9f38-1b3d-4e5c-9e74-9dc49b4f2fd0
+        request_method:
+          type: string
+          minLength: 1
+          maxLength: 16
+          description: HTTP 请求方法，保存时转为大写。
+          example: POST
+        request_url:
+          type: string
+          minLength: 1
+          maxLength: 8192
+          example: https://api.example.com/order/create
+        request_headers:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: JSON 对象，最大 64KB。
+        request_params:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: JSON 对象，最大 64KB。
+        error_scene:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: payment.callback.signature_invalid
+        error_message:
+          type: string
+          minLength: 1
+          maxLength: 16384
+          example: 支付回调验签失败
+        error_file:
+          type: string
+          nullable: true
+          maxLength: 2048
+          example: /www/shop/app/service/Payment.php
+        error_line:
+          type: integer
+          nullable: true
+          minimum: 1
+          example: 126
+        error_stack:
+          type: string
+          nullable: true
+          maxLength: 65536
+          example: '...'
+
+    IngestAccepted:
+      type: object
+      required:
+        - accepted
+      properties:
+        accepted:
+          type: integer
+          example: 1
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          example: ok
+
+    AdminLoginRequest:
+      type: object
+      required:
+        - password
+      properties:
+        password:
+          type: string
+          example: admin123
+
+    AdminLoginResponse:
+      type: object
+      required:
+        - csrf_token
+      properties:
+        csrf_token:
+          type: string
+          example: base64url-token
+
+    LogSummary:
+      type: object
+      required:
+        - event_id
+        - event_time
+        - received_at
+        - project_key
+        - node_key
+        - level
+        - locked
+        - request_ip
+        - member
+        - session_id
+        - request_method
+        - request_url
+        - error_scene
+        - error_message
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        event_time:
+          type: string
+          format: date-time
+        received_at:
+          type: string
+          format: date-time
+        project_key:
+          type: string
+        node_key:
+          type: string
+        level:
+          $ref: '#/components/schemas/Level'
+        locked:
+          type: boolean
+          description: 已锁定记录不能参与批量删除、按条件删除或按目录范围删除。
+        request_ip:
+          type: string
+        member:
+          type: string
+        session_id:
+          type: string
+        request_method:
+          type: string
+        request_url:
+          type: string
+        error_scene:
+          type: string
+        error_message:
+          type: string
+
+    LogDetail:
+      allOf:
+        - $ref: '#/components/schemas/LogSummary'
+        - type: object
+          properties:
+            request_headers:
+              type: object
+              nullable: true
+              additionalProperties: true
+            request_params:
+              type: object
+              nullable: true
+              additionalProperties: true
+            error_file:
+              type: string
+              nullable: true
+            error_line:
+              type: integer
+              nullable: true
+            error_stack:
+              type: string
+              nullable: true
+
+    LogListResponse:
+      type: object
+      required:
+        - items
+        - next_cursor
+        - has_more
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogSummary'
+        next_cursor:
+          type: string
+          description: 没有下一页时为空字符串。
+        has_more:
+          type: boolean
+
+    DeleteSelectedLogsRequest:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/DeleteLogRef'
+
+    DeleteLogRef:
+      type: object
+      required:
+        - event_id
+        - level
+        - event_time
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        level:
+          $ref: '#/components/schemas/Level'
+        event_time:
+          type: string
+          format: date-time
+
+    LockSelectedLogsRequest:
+      type: object
+      required:
+        - items
+        - locked
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/DeleteLogRef'
+        locked:
+          type: boolean
+
+    DeleteFilteredLogsRequest:
+      type: object
+      properties:
+        start_time:
+          type: string
+        end_time:
+          type: string
+        project_key:
+          type: string
+        node_key:
+          type: string
+        level:
+          $ref: '#/components/schemas/Level'
+        error_scene:
+          type: string
+        member:
+          type: string
+        session_id:
+          type: string
+        request_ip:
+          type: string
+
+    DeleteScopedLogsRequest:
+      type: object
+      required:
+        - project_key
+      properties:
+        project_key:
+          type: string
+        node_key:
+          type: string
+        level:
+          $ref: '#/components/schemas/Level'
+
+    DeleteLogsResponse:
+      type: object
+      required:
+        - deleted
+        - skipped_locked
+      properties:
+        deleted:
+          type: integer
+          format: int64
+          example: 12
+        skipped_locked:
+          type: integer
+          format: int64
+          description: 因已锁定而跳过删除的记录数。
+          example: 2
+
+    CreateProjectTokenRequest:
+      type: object
+      required:
+        - project_key
+        - name
+      properties:
+        project_key:
+          type: string
+          minLength: 1
+          maxLength: 64
+          example: shop-api
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: 商城 API
+        enabled:
+          type: boolean
+          default: true
+
+    UpdateProjectTokenRequest:
+      type: object
+      properties:
+        project_key:
+          type: string
+          minLength: 1
+          maxLength: 64
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        enabled:
+          type: boolean
+
+    ProjectToken:
+      type: object
+      required:
+        - id
+        - project_key
+        - name
+        - enabled
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_key:
+          type: string
+        name:
+          type: string
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateProjectTokenResponse:
+      type: object
+      required:
+        - token
+        - project_token
+      properties:
+        token:
+          type: string
+          description: 只在创建响应中返回一次的 Token 明文。
+          example: base64url-project-token
+        project_token:
+          $ref: '#/components/schemas/ProjectToken'
+
+    ProjectTokenListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectToken'
+
+    SystemSettings:
+      type: object
+      required:
+        - retention_days
+      properties:
+        retention_days:
+          type: integer
+          minimum: 1
+          maximum: 3650
+          example: 30
+
+    UpdateSystemSettingsRequest:
+      type: object
+      properties:
+        retention_days:
+          type: integer
+          minimum: 1
+          maximum: 3650
+          example: 30
+
+    Alert:
+      type: object
+      required:
+        - key
+        - message
+        - since
+      properties:
+        key:
+          type: string
+          example: queue_high
+        message:
+          type: string
+          example: 接收队列使用率超过 80%
+        since:
+          type: string
+          format: date-time
+
+    SystemStatus:
+      type: object
+      required:
+        - database_ok
+        - queue_depth
+        - queue_capacity
+        - retention_days
+        - last_write
+        - alerts
+      properties:
+        database_ok:
+          type: boolean
+        queue_depth:
+          type: integer
+        queue_capacity:
+          type: integer
+        retention_days:
+          type: integer
+        last_write:
+          type: string
+          format: date-time
+          nullable: true
+        alerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Alert'
+
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: '#/components/schemas/Error'
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          example: INVALID_LOG
+        message:
+          type: string
+          example: event_time is invalid
+        index:
+          type: integer
+          nullable: true
+          description: 批次中的日志下标。
+          example: 12
+        field:
+          type: string
+          nullable: true
+          example: event_time

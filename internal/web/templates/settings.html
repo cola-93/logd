@@ -1,0 +1,403 @@
+{{define "content"}}
+<div class="settings-shell">
+  <!-- Left: OpenAI-style Settings Sidebar -->
+  <aside class="settings-sidebar">
+    <div class="settings-sidebar-nav">
+      <div class="settings-nav-group-title">系统配置</div>
+      <a class="settings-nav-item {{if eq .Section "basic"}}active{{end}}" href="/admin/settings">
+        <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.61.65 1.05 1.28 1.09H21a2 2 0 1 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"></path>
+        </svg>
+        <span>基础设置</span>
+      </a>
+      <a class="settings-nav-item {{if eq .Section "tokens"}}active{{end}}" href="/admin/settings?section=tokens">
+        <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="7.5" cy="15.5" r="4.5"></circle>
+          <path d="M10.7 12.3l10.3-10.3M17 6l2 2m-4-1l2 2"></path>
+        </svg>
+        <span>项目 Token</span>
+      </a>
+      <a class="settings-nav-item {{if eq .Section "status"}}active{{end}}" href="/admin/settings?section=status">
+        <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+        </svg>
+        <span>服务状态</span>
+      </a>
+    </div>
+
+    <!-- Bottom Left: Version, Author Cocacola & Copyright -->
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-row">
+        <span class="badge-version">v{{.Version}}</span>
+        <span class="footer-author">Powered by <strong>Cocacola</strong></span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Right: Main Content Canvas -->
+  <main class="settings-canvas">
+    <div class="settings-container">
+      {{if eq .Section "basic"}}
+      <div class="settings-header">
+        <div>
+          <h1 class="settings-title">基础设置</h1>
+          <p class="settings-subtitle">管理 logd 分布式日志中心的存储生命周期。</p>
+        </div>
+      </div>
+
+      {{if .Error}}<div class="msg-alert error">{{.Error}}</div>{{end}}
+      {{if .Notice}}<div class="msg-alert notice">{{.Notice}}</div>{{end}}
+
+      <form method="post" action="/admin/settings">
+        <input type="hidden" name="_csrf" value="{{.CSRF}}">
+        <div class="oai-card">
+          <!-- Distinct Section Group Header -->
+          <div class="oai-card-header">
+            <div class="card-header-main">
+              <div class="card-header-icon">
+                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                  <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                  <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                </svg>
+              </div>
+              <div>
+                <div class="card-header-badge-row">
+                  <h2 class="oai-card-title">存储配置</h2>
+                </div>
+                <p class="oai-card-desc">配置日志保留天数。</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Parameter 1: retention_days -->
+          <div class="oai-row">
+            <div class="oai-row-label">
+              <div class="param-title-row">
+                <label for="input-retention" class="param-label">非错误日志保留天数</label>
+                <code class="param-code">retention_days</code>
+              </div>
+              <p class="param-desc">针对 INFO、WARN、DEBUG 等常规日志的物理分区保留周期。超过此周期的历史分区将被自动清退释放空间。</p>
+            </div>
+            <div class="oai-row-control">
+              <div class="input-with-addon">
+                <input class="form-input" id="input-retention" type="number" name="retention_days" min="1" max="3650" value="{{.Settings.RetentionDays}}" required style="width: 130px;">
+                <span class="input-addon">天</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="oai-card-footer">
+            <button class="btn btn-primary" type="submit">保存更改</button>
+          </div>
+        </div>
+      </form>
+      {{end}}
+
+      {{if eq .Section "tokens"}}
+      <div class="settings-header">
+        <div>
+          <h1 class="settings-title">项目 Token</h1>
+          <p class="settings-subtitle">管理各业务系统客户端接入 logd 所需的凭据密钥。请妥善保管，切勿泄露。</p>
+        </div>
+      </div>
+
+      {{if .Error}}<div class="msg-alert error">{{.Error}}</div>{{end}}
+      {{if .Notice}}<div class="msg-alert notice">{{.Notice}}</div>{{end}}
+
+      {{if .NewToken}}
+      <div class="token-secret-banner">
+        <div class="token-secret-header">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="var(--oai-green)" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          <div class="token-secret-text">
+            <strong>新 Token 已成功生成</strong>
+            <p>出于安全考量，该明文 Token <strong>仅在此处显示一次</strong>。请立即复制并保存至您的客户端配置文件中。</p>
+          </div>
+        </div>
+        <div class="token-secret-box">
+          <code id="new-token-val" class="token-code">{{.NewToken}}</code>
+          <button type="button" class="btn btn-primary btn-xs" data-copy="#new-token-val">复制 Token</button>
+        </div>
+      </div>
+      {{end}}
+
+      <!-- Add Token Card -->
+      <div class="oai-card" style="margin-bottom: 24px;">
+        <div class="oai-card-header">
+          <div class="card-header-main">
+            <div class="card-header-icon">
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </div>
+            <div>
+              <div class="card-header-badge-row">
+                <h2 class="oai-card-title">创建新 Token</h2>
+              </div>
+              <p class="oai-card-desc">为新的业务项目或微服务创建独立的日志上报身份凭据。</p>
+            </div>
+          </div>
+        </div>
+        <form method="post" action="/admin/project-tokens">
+          <input type="hidden" name="_csrf" value="{{.CSRF}}">
+          <div class="oai-row">
+            <div class="oai-row-label">
+              <div class="param-title-row">
+                <label for="token-name" class="param-label">项目名称</label>
+                <code class="param-code">name</code>
+              </div>
+              <p class="param-desc">易于识别的项目名称，例如“商城后端服务”、“用户中心 API”。</p>
+            </div>
+            <div class="oai-row-control">
+              <input class="form-input" id="token-name" name="name" maxlength="100" required placeholder="例如: 商城后端服务">
+            </div>
+          </div>
+          <div class="oai-row">
+            <div class="oai-row-label">
+              <div class="param-title-row">
+                <label for="token-key" class="param-label">项目标识</label>
+                <code class="param-code">project_key</code>
+              </div>
+              <p class="param-desc">业务代码上报时必须匹配的英文标识，通常使用小写字母与横杠。</p>
+            </div>
+            <div class="oai-row-control">
+              <input class="form-input cell-mono" id="token-key" name="project_key" maxlength="64" required placeholder="例如: shop-api">
+            </div>
+          </div>
+          <div class="oai-row">
+            <div class="oai-row-label">
+              <div class="param-title-row">
+                <label class="param-label">初始状态</label>
+                <code class="param-code">enabled</code>
+              </div>
+              <p class="param-desc">创建后是否立即启用该 Token 接收客户端上报的日志。</p>
+            </div>
+            <div class="oai-row-control">
+              <label class="toggle-switch">
+                <input type="checkbox" name="enabled" value="true" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">启用此 Token</span>
+              </label>
+            </div>
+          </div>
+          <div class="oai-card-footer">
+            <button class="btn btn-primary" type="submit">生成 Token</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Token List Card -->
+      <div class="oai-card">
+        <div class="oai-card-header">
+          <div class="card-header-main">
+            <div class="card-header-icon">
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+              </svg>
+            </div>
+            <div>
+              <div class="card-header-badge-row">
+                <h2 class="oai-card-title">现有项目 Token ({{len .Tokens}})</h2>
+              </div>
+              <p class="oai-card-desc">已注册并生效的业务端身份凭据，支持即时保存修改与删除。</p>
+            </div>
+          </div>
+        </div>
+
+        {{if .Tokens}}
+        <div class="token-form-store" style="display: none;">
+          {{range .Tokens}}
+          <form id="token-form-{{.ID}}" method="post" action="/admin/project-tokens/{{.ID}}">
+            <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+          </form>
+          {{end}}
+        </div>
+        {{end}}
+
+        <div class="table-responsive">
+          <table class="oai-table">
+            <thead>
+              <tr>
+                <th style="width: 220px;">项目名称</th>
+                <th style="width: 170px;">项目标识 (KEY)</th>
+                <th style="width: 110px;">状态</th>
+                <th style="width: 160px;">创建时间</th>
+                <th style="width: 160px;">更新时间</th>
+                <th style="width: 130px; text-align: right;">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Tokens}}
+              <tr>
+                <td>
+                  <input form="token-form-{{.ID}}" class="form-input form-input-compact" name="name" value="{{.Name}}" maxlength="100" required>
+                </td>
+                <td>
+                  <input form="token-form-{{.ID}}" class="form-input form-input-compact cell-mono" name="project_key" value="{{.ProjectKey}}" maxlength="64" required>
+                </td>
+                <td>
+                  <label class="toggle-switch-compact">
+                    <input form="token-form-{{.ID}}" type="checkbox" name="enabled" value="true" {{if .Enabled}}checked{{end}}>
+                    <span class="badge-status {{if .Enabled}}active{{else}}inactive{{end}}">
+                      <span class="status-dot"></span>
+                      {{if .Enabled}}启用{{else}}禁用{{end}}
+                    </span>
+                  </label>
+                </td>
+                <td class="cell-mono muted-cell">{{formatTime .CreatedAt}}</td>
+                <td class="cell-mono muted-cell">{{formatTime .UpdatedAt}}</td>
+                <td style="text-align: right; white-space: nowrap;">
+                  <button form="token-form-{{.ID}}" class="btn btn-ghost btn-xs" type="submit">保存</button>
+                  <button form="token-form-{{.ID}}" class="btn btn-danger btn-xs" type="submit" formaction="/admin/project-tokens/{{.ID}}/delete" data-confirm="确认删除此 Token？此操作不可逆。">删除</button>
+                </td>
+              </tr>
+              {{else}}
+              <tr>
+                <td colspan="6" class="table-empty">
+                  <div class="empty-placeholder">
+                    <svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="8" x2="12" y2="12"></line>
+                      <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                    <span>暂无项目 Token，请在上方创建第一个接入凭据</span>
+                  </div>
+                </td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {{end}}
+
+      {{if eq .Section "status"}}
+      <div class="settings-header">
+        <div>
+          <h1 class="settings-title">服务状态</h1>
+          <p class="settings-subtitle">实时系统运行指标、后台异步队列状态与活动告警事件监控。</p>
+        </div>
+      </div>
+
+      <!-- Health Banner -->
+      <div class="oai-health-banner {{if and .DatabaseOK (eq (len .Alerts) 0)}}healthy{{else}}warning{{end}}">
+        <div class="health-icon">
+          {{if and .DatabaseOK (eq (len .Alerts) 0)}}
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          {{else}}
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+          {{end}}
+        </div>
+        <div class="health-info">
+          <strong>{{if and .DatabaseOK (eq (len .Alerts) 0)}}所有系统运行正常 (All Systems Operational){{else}}系统检测到异常或活动告警{{end}}</strong>
+          <p>{{if and .DatabaseOK (eq (len .Alerts) 0)}}PostgreSQL 数据库连接稳固，日志写入管道与异步消费队列处于健康状态。{{else}}请检查下方活动告警列表以排查问题。{{end}}</p>
+        </div>
+      </div>
+
+      <!-- KPI Grid -->
+      <div class="oai-kpi-grid">
+        <div class="oai-kpi-card">
+          <span class="kpi-label">数据库连接</span>
+          <div class="kpi-val {{if .DatabaseOK}}ok{{else}}bad{{end}}">
+            <span class="live-dot {{if not .DatabaseOK}}danger{{end}}"></span>
+            <span>{{if .DatabaseOK}}连接正常{{else}}连接异常{{end}}</span>
+          </div>
+          <span class="kpi-desc">PostgreSQL 主节点</span>
+        </div>
+
+        <div class="oai-kpi-card">
+          <span class="kpi-label">异步队列深度</span>
+          <div class="kpi-val">{{.QueueDepth}}</div>
+          <span class="kpi-desc">当前积压日志批次</span>
+        </div>
+
+        <div class="oai-kpi-card">
+          <span class="kpi-label">队列缓冲容量</span>
+          <div class="kpi-val">{{.QueueCapacity}}</div>
+          <span class="kpi-desc">内存 Channel 上限</span>
+        </div>
+
+        <div class="oai-kpi-card">
+          <span class="kpi-label">非错误保留周期</span>
+          <div class="kpi-val">{{.Settings.RetentionDays}} <span class="kpi-unit">天</span></div>
+          <span class="kpi-desc">物理分区自动清理</span>
+        </div>
+
+        <div class="oai-kpi-card" style="grid-column: span 2;">
+          <span class="kpi-label">最近批量写入时间</span>
+          <div class="kpi-val cell-mono" style="font-size: 15px;">{{if .LastWrite}}{{.LastWrite}}{{else}}-{{end}}</div>
+          <span class="kpi-desc">最后一次成功刷盘的微批次时间</span>
+        </div>
+      </div>
+
+      <!-- Alerts List Card -->
+      <div class="oai-card">
+        <div class="oai-card-header">
+          <div class="card-header-main">
+            <div class="card-header-icon">
+              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+            </div>
+            <div>
+              <div class="card-header-badge-row">
+                <h2 class="oai-card-title">活动告警事件 ({{len .Alerts}})</h2>
+              </div>
+              <p class="oai-card-desc">当前系统中尚未自动恢复的异常事件监控。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="oai-table">
+            <thead>
+              <tr>
+                <th style="width: 220px;">告警标识 (Key)</th>
+                <th>告警说明 (Message)</th>
+                <th style="width: 200px;">触发时间 (Since)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Alerts}}
+              <tr>
+                <td><span class="level level-ERROR">{{.Key}}</span></td>
+                <td>{{.Message}}</td>
+                <td class="cell-mono muted-cell">{{formatTime .Since}}</td>
+              </tr>
+              {{else}}
+              <tr>
+                <td colspan="3" class="table-empty">
+                  <div class="empty-placeholder">
+                    <svg viewBox="0 0 24 24" width="32" height="32" stroke="var(--oai-green)" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                      <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                    </svg>
+                    <span>无未恢复的活动告警，所有系统指标运转平稳</span>
+                  </div>
+                </td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {{end}}
+    </div>
+  </main>
+</div>
+{{end}}
