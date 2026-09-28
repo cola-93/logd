@@ -348,33 +348,30 @@ async function loadLogList(url) {
 
   try {
     const response = await fetch(url, {
-      headers: { Accept: "text/html" },
+      headers: { Accept: "application/json" },
       signal: controller.signal,
     });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
 
-    const html = await response.text();
-    const doc = new DOMParser().parseFromString(html, "text/html");
-    const newBody = doc.querySelector("#logs-table tbody");
     const body = table.querySelector("tbody");
-    if (!newBody || !body) {
+    if (!body) {
       throw new Error("日志列表响应无效");
     }
+    const data = await response.json();
 
-    body.replaceChildren(...Array.from(newBody.children));
+    body.replaceChildren(...data.items.map(createLogRow));
+    if (!data.items.length) body.append(createEmptyLogRow());
 
     const sentinel = document.getElementById("logs-load-more");
-    const newSentinel = doc.getElementById("logs-load-more");
     if (sentinel) {
-      sentinel.dataset.nextUrl = newSentinel?.dataset.nextUrl || "";
+      sentinel.dataset.nextUrl = data.next_url;
       sentinel.hidden = !sentinel.dataset.nextUrl;
     }
 
-    const newCount = doc.getElementById("logs-count");
     const count = document.getElementById("logs-count");
-    if (newCount && count) count.textContent = newCount.textContent;
+    if (count) count.textContent = String(data.items.length);
 
     const container = table.closest(".logs-table-container");
     if (container) container.scrollTop = 0;
@@ -617,24 +614,22 @@ function initInfiniteLogScroll(table) {
 
     try {
       const response = await fetch(nextURL, {
-        headers: { Accept: "text/html" },
+        headers: { Accept: "application/json" },
       });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      const html = await response.text();
-      const doc = new DOMParser().parseFromString(html, "text/html");
       const body = table.querySelector("tbody");
-      const newRows = Array.from(doc.querySelectorAll("#logs-table tbody .log-row"));
+      const data = await response.json();
+      const newRows = data.items.map(createLogRow);
       if ((table.dataset.listVersion || "") !== listVersion) return;
 
       if (body && newRows.length > 0) {
         body.append(...newRows);
       }
 
-      const nextSentinel = doc.getElementById("logs-load-more");
-      sentinel.dataset.nextUrl = nextSentinel?.dataset.nextUrl || "";
+      sentinel.dataset.nextUrl = data.next_url;
       updateLogCount(table);
       updateLogSelectionUI(table);
 
@@ -657,6 +652,82 @@ function initInfiniteLogScroll(table) {
   }
 
   observer.observe(sentinel);
+}
+
+function createLogRow(item) {
+  const row = document.createElement("tr");
+  const locked = Boolean(item.locked);
+  row.className = `log-row${locked ? " is-locked" : ""}`;
+  row.dataset.eventId = item.event_id;
+  row.dataset.level = item.level;
+  row.dataset.eventTime = item.event_time;
+  row.dataset.locked = String(locked);
+  row.dataset.detailUrl = item.detail_url;
+  row.innerHTML = `
+    <td class="col-select">
+      <div class="log-select-cell">
+        <button type="button" class="log-lock-btn">
+          <svg class="log-lock-icon log-lock-open" viewBox="0 0 24 24" aria-hidden="true">
+            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+          </svg>
+          <svg class="log-lock-icon log-lock-closed" viewBox="0 0 24 24" aria-hidden="true">
+            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </button>
+        <input type="checkbox" class="log-select-checkbox" aria-label="选择日志">
+      </div>
+    </td>
+    <td class="col-time cell-mono"></td>
+    <td class="col-project"></td>
+    <td class="col-node"></td>
+    <td class="col-level"><span class="level"></span></td>
+    <td class="col-session cell-mono"></td>
+    <td class="col-scene"></td>
+    <td class="col-msg"></td>
+    <td class="col-ip cell-mono"></td>
+    <td class="col-action" onclick="event.stopPropagation();">
+      <a class="btn btn-ghost btn-xs" target="_blank" rel="noopener noreferrer" title="新窗口打开完整详情">新窗口 ↗</a>
+    </td>
+  `;
+
+  const cells = row.querySelectorAll("td");
+  const setCell = (index, value) => {
+    cells[index].textContent = value || "";
+    cells[index].title = value || "";
+  };
+  setCell(1, formatDateTime(item.event_time));
+  setCell(2, item.project_key);
+  setCell(3, item.node_key);
+  setCell(5, item.session_id);
+  setCell(6, item.error_scene);
+  setCell(7, item.error_message);
+  setCell(8, item.request_ip);
+
+  const level = row.querySelector(".col-level .level");
+  level.textContent = item.level;
+  level.className = `level level-${item.level}`;
+
+  const lockButton = row.querySelector(".log-lock-btn");
+  lockButton.title = locked ? "解锁记录" : "锁定记录";
+  lockButton.setAttribute("aria-label", lockButton.title);
+  lockButton.setAttribute("aria-pressed", String(locked));
+
+  row.querySelector(".col-action a").href = item.detail_url;
+  return row;
+}
+
+function createEmptyLogRow() {
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+  cell.colSpan = 10;
+  cell.style.textAlign = "center";
+  cell.style.padding = "48px 16px";
+  cell.style.color = "var(--text-muted)";
+  cell.textContent = "没有符合条件的日志记录";
+  row.append(cell);
+  return row;
 }
 
 function updateLogCount(table) {

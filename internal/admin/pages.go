@@ -66,7 +66,27 @@ type parsedLogFilter struct {
 
 type logRow struct {
 	store.LogSummary
-	DetailURL string
+	DetailURL string `json:"detail_url"`
+}
+
+type logListItem struct {
+	EventID      string    `json:"event_id"`
+	EventTime    time.Time `json:"event_time"`
+	ProjectKey   string    `json:"project_key"`
+	NodeKey      string    `json:"node_key"`
+	Level        string    `json:"level"`
+	RequestIP    string    `json:"request_ip"`
+	SessionID    string    `json:"session_id"`
+	ErrorScene   string    `json:"error_scene"`
+	ErrorMessage string    `json:"error_message"`
+	Locked       bool      `json:"locked"`
+	DetailURL    string    `json:"detail_url"`
+}
+
+type logsListResponse struct {
+	Items   []logListItem `json:"items"`
+	NextURL string        `json:"next_url"`
+	HasMore bool          `json:"has_more"`
 }
 
 type LevelNode struct {
@@ -141,6 +161,10 @@ func (h *Handler) logsPage(w http.ResponseWriter, r *http.Request) {
 
 	filter, err := h.parseLogFilters(r, false)
 	if err != nil {
+		if wantsJSON(r) {
+			writeJSONError(w, http.StatusBadRequest, "INVALID_QUERY", err.Error())
+			return
+		}
 		data := h.basePageData(r, "日志列表", "logs")
 		data.Error = err.Error()
 		h.render(w, "logs", http.StatusBadRequest, logsPageData{
@@ -153,6 +177,10 @@ func (h *Handler) logsPage(w http.ResponseWriter, r *http.Request) {
 
 	items, hasMore, err := h.db.QueryLogs(r.Context(), filter.Value)
 	if err != nil {
+		if wantsJSON(r) {
+			writeJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "查询日志失败")
+			return
+		}
 		h.serverError(w, r, err)
 		return
 	}
@@ -193,6 +221,10 @@ func (h *Handler) logsPage(w http.ResponseWriter, r *http.Request) {
 	if hasMore && len(items) > 0 {
 		cursor, err := encodeCursor(items[len(items)-1])
 		if err != nil {
+			if wantsJSON(r) {
+				writeJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "生成分页游标失败")
+				return
+			}
 			h.serverError(w, r, err)
 			return
 		}
@@ -206,6 +238,31 @@ func (h *Handler) logsPage(w http.ResponseWriter, r *http.Request) {
 			nextTrail = currentTrail + "," + currentCursor
 		}
 		nextURL = buildLogsPageURL(filter.Form, cursor, nextTrail)
+	}
+
+	if wantsJSON(r) {
+		listItems := make([]logListItem, 0, len(rows))
+		for _, row := range rows {
+			listItems = append(listItems, logListItem{
+				EventID:      row.EventID,
+				EventTime:    row.EventTime,
+				ProjectKey:   row.ProjectKey,
+				NodeKey:      row.NodeKey,
+				Level:        row.Level,
+				RequestIP:    row.RequestIP,
+				SessionID:    row.SessionID,
+				ErrorScene:   row.ErrorScene,
+				ErrorMessage: row.ErrorMessage,
+				Locked:       row.Locked,
+				DetailURL:    row.DetailURL,
+			})
+		}
+		writeJSON(w, http.StatusOK, logsListResponse{
+			Items:   listItems,
+			NextURL: nextURL,
+			HasMore: hasMore,
+		})
+		return
 	}
 
 	data := logsPageData{
@@ -541,7 +598,7 @@ func (h *Handler) parseLogFilters(r *http.Request, requireTime bool) (parsedLogF
 		return parsedLogFilter{}, fmt.Errorf("request_ip 无效")
 	}
 
-	limit := 100
+	limit := 50
 	if value := strings.TrimSpace(query.Get("limit")); value != "" {
 		limit, err = strconv.Atoi(value)
 		if err != nil || limit < 1 || limit > 500 {
@@ -584,6 +641,10 @@ func (h *Handler) parseLogFilters(r *http.Request, requireTime bool) (parsedLogF
 			SessionID:  filter.SessionID,
 		},
 	}, nil
+}
+
+func wantsJSON(r *http.Request) bool {
+	return strings.Contains(strings.ToLower(r.Header.Get("Accept")), "application/json")
 }
 
 func (h *Handler) parseDetailQuery(r *http.Request) (string, string, time.Time, error) {
