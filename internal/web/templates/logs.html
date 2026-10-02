@@ -105,6 +105,10 @@
         </select>
       </div>
       <div class="filter-input-group">
+        <span>来源端</span>
+        <input name="channel" value="{{.Filters.Channel}}" placeholder="精确匹配" style="width: 75px;">
+      </div>
+      <div class="filter-input-group">
         <span>场景</span>
         <input name="error_scene" value="{{.Filters.ErrorScene}}" placeholder="包含匹配" style="width: 75px;">
       </div>
@@ -140,6 +144,7 @@
             <th class="col-time">时间</th>
             <th class="col-project">项目</th>
             <th class="col-node">节点</th>
+            <th class="col-channel">来源端</th>
             <th class="col-level">级别</th>
             <th class="col-session">Session ID</th>
             <th class="col-scene">错误场景</th>
@@ -178,6 +183,7 @@
             <td class="col-time cell-mono">{{formatTime .EventTime}}</td>
             <td class="col-project" title="{{.ProjectKey}}">{{.ProjectKey}}</td>
             <td class="col-node" title="{{.NodeKey}}">{{.NodeKey}}</td>
+            <td class="col-channel" title="{{.Channel}}">{{if .Channel}}{{channelLabel .Channel}}{{else}}-{{end}}</td>
             <td class="col-level"><span class="level level-{{.Level}}">{{.Level}}</span></td>
             <td class="col-session cell-mono" title="{{.SessionID}}">{{.SessionID}}</td>
             <td class="col-scene" title="{{.ErrorScene}}">{{.ErrorScene}}</td>
@@ -191,7 +197,7 @@
           </tr>
           {{else}}
           <tr>
-            <td colspan="10" style="text-align: center; padding: 48px 16px; color: var(--text-muted);">
+            <td colspan="11" style="text-align: center; padding: 48px 16px; color: var(--text-muted);">
               没有符合条件的日志记录
             </td>
           </tr>
@@ -258,6 +264,14 @@
             <div class="overview-cell span-4">
               <div class="cell-label">错误信息</div>
               <div class="cell-value error-message-text" id="card-message">-</div>
+            </div>
+            <div class="overview-cell span-2">
+              <div class="cell-label">来源端</div>
+              <div class="cell-value" id="card-channel">-</div>
+            </div>
+            <div class="overview-cell span-2">
+              <div class="cell-label">日志上下文 (Context)</div>
+              <div class="cell-value cell-mono" id="card-context">-</div>
             </div>
           </div>
 

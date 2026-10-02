@@ -67,6 +67,7 @@ paths:
                 - event_id: 4f5b4fd5-42b8-47d5-a0db-0273cd76f574
                   event_time: '2026-09-21T12:30:00.123+08:00'
                   level: ERROR
+                  channel: payment_callback
                   request_ip: 1.2.3.4
                   member: '10001'
                   session_id: 2f3d9f38-1b3d-4e5c-9e74-9dc49b4f2fd0
@@ -77,6 +78,8 @@ paths:
                     user-agent: PHP/8.3
                   request_params:
                     order_id: 10001
+                  context:
+                    order_no: '202609211230001234'
                   error_scene: payment.callback.signature_invalid
                   error_message: 支付回调验签失败
                   error_file: /www/shop/app/service/Payment.php
@@ -310,6 +313,7 @@ paths:
         - $ref: '#/components/parameters/ProjectKey'
         - $ref: '#/components/parameters/NodeKey'
         - $ref: '#/components/parameters/Level'
+        - $ref: '#/components/parameters/Channel'
         - $ref: '#/components/parameters/ErrorScene'
         - $ref: '#/components/parameters/RequestIP'
         - $ref: '#/components/parameters/Member'
@@ -331,6 +335,7 @@ paths:
                     project_key: shop-api
                     node_key: node-sh-03
                     level: ERROR
+                    channel: payment_callback
                     request_ip: 1.2.3.4
                     member: '10001'
                     session_id: 2f3d9f38-1b3d-4e5c-9e74-9dc49b4f2fd0
@@ -767,6 +772,7 @@ paths:
               project_key: shop-api
               node_key: node-sh-03
               level: ERROR
+              channel: payment_callback
               error_scene: payment.callback
               member: '10001'
               session_id: 2f3d9f38-1b3d-4e5c-9e74-9dc49b4f2fd0
@@ -955,6 +961,14 @@ components:
       description: 日志级别，精确匹配。
       schema:
         $ref: '#/components/schemas/Level'
+    Channel:
+      name: channel
+      in: query
+      required: false
+      description: 日志来源端，精确匹配。取值由写入方约定，日志中心不校验枚举。
+      schema:
+        $ref: '#/components/schemas/Channel'
+      example: payment_callback
     ErrorScene:
       name: error_scene
       in: query
@@ -1051,6 +1065,13 @@ components:
         - WARN
         - ERROR
         - DEBUG
+
+    Channel:
+      type: string
+      nullable: true
+      maxLength: 64
+      description: 日志来源端。取值由写入方约定（admin、user、cli、agent、system_api、payment_callback、system），日志中心不校验枚举。
+      example: payment_callback
 
     LogBatchRequest:
       type: object
@@ -1202,6 +1223,7 @@ components:
         - project_key
         - node_key
         - level
+        - channel
         - locked
         - request_ip
         - member
@@ -1226,6 +1248,9 @@ components:
           type: string
         level:
           $ref: '#/components/schemas/Level'
+        channel:
+          type: string
+          description: 未提交时为空字符串。
         locked:
           type: boolean
           description: 已锁定记录不能参与批量删除、按条件删除或按目录范围删除。
@@ -1257,6 +1282,14 @@ components:
               type: object
               nullable: true
               additionalProperties: true
+            context:
+              type: object
+              nullable: true
+              additionalProperties: true
+              description: 结构化业务上下文，未提交时为 null。
+            channel_label:
+              type: string
+              description: channel 的中文展示名，未识别或为空时为空字符串。
             error_file:
               type: string
               nullable: true
@@ -1338,6 +1371,8 @@ components:
           type: string
         level:
           $ref: '#/components/schemas/Level'
+        channel:
+          type: string
         error_scene:
           type: string
         member:

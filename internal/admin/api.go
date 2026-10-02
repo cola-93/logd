@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"logd/internal/store"
+	"logd/internal/web"
 )
 
 type tokenCreateInput struct {
@@ -75,7 +76,13 @@ func (h *Handler) detailAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "读取日志详情失败")
 		return
 	}
-	writeJSON(w, http.StatusOK, detail)
+	writeJSON(w, http.StatusOK, struct {
+		store.LogDetail
+		ChannelLabel string `json:"channel_label"`
+	}{
+		LogDetail:    detail,
+		ChannelLabel: web.ChannelLabel(detail.Channel),
+	})
 }
 
 func (h *Handler) listTokensAPI(w http.ResponseWriter, r *http.Request) {

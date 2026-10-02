@@ -14,6 +14,7 @@ type LogFilter struct {
 	ProjectKey string
 	NodeKey    string
 	Level      string
+	Channel    string
 	ErrorScene string
 	RequestIP  string
 	Member     string
@@ -30,6 +31,7 @@ type LogSummary struct {
 	ProjectKey    string    `json:"project_key"`
 	NodeKey       string    `json:"node_key"`
 	Level         string    `json:"level"`
+	Channel       string    `json:"channel"`
 	RequestIP     string    `json:"request_ip"`
 	Member        string    `json:"member"`
 	SessionID     string    `json:"session_id"`
@@ -44,6 +46,7 @@ type LogDetail struct {
 	LogSummary
 	RequestHeaders json.RawMessage `json:"request_headers"`
 	RequestParams  json.RawMessage `json:"request_params"`
+	Context        json.RawMessage `json:"context"`
 	ErrorFile      *string         `json:"error_file"`
 	ErrorLine      *int            `json:"error_line"`
 	ErrorStack     *string         `json:"error_stack"`
@@ -68,6 +71,7 @@ func (db *DB) QueryLogs(
 		       project_key,
 		       node_key,
 		       level,
+		       COALESCE(channel, ''),
 		       host(request_ip),
 		       member,
 		       session_id,
@@ -98,6 +102,7 @@ func (db *DB) QueryLogs(
 			&item.ProjectKey,
 			&item.NodeKey,
 			&item.Level,
+			&item.Channel,
 			&item.RequestIP,
 			&item.Member,
 			&item.SessionID,
@@ -152,6 +157,7 @@ func buildLogFilterWhere(filter LogFilter, includeCursor bool) (string, []any) {
 	addStringFilter("project_key", filter.ProjectKey)
 	addContainsFilter("node_key", filter.NodeKey)
 	addStringFilter("level", filter.Level)
+	addStringFilter("channel", filter.Channel)
 	addContainsFilter("error_scene", filter.ErrorScene)
 	addStringFilter("member", filter.Member)
 	addStringFilter("session_id", filter.SessionID)
@@ -191,6 +197,7 @@ func (db *DB) LogDetail(
 		        project_key,
 		        node_key,
 		        level,
+		        COALESCE(channel, ''),
 		        host(request_ip),
 		        member,
 		        session_id,
@@ -201,6 +208,7 @@ func (db *DB) LogDetail(
 		        locked,
 		        request_headers,
 		        request_params,
+		        context,
 		        error_file,
 		        error_line,
 		        error_stack
@@ -218,6 +226,7 @@ func (db *DB) LogDetail(
 		&item.ProjectKey,
 		&item.NodeKey,
 		&item.Level,
+		&item.Channel,
 		&item.RequestIP,
 		&item.Member,
 		&item.SessionID,
@@ -228,6 +237,7 @@ func (db *DB) LogDetail(
 		&item.Locked,
 		&item.RequestHeaders,
 		&item.RequestParams,
+		&item.Context,
 		&item.ErrorFile,
 		&item.ErrorLine,
 		&item.ErrorStack,

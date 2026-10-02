@@ -48,6 +48,7 @@ Content-Encoding: gzip
       "event_id": "4f5b4fd5-42b8-47d5-a0db-0273cd76f574",
       "event_time": "2026-09-21T12:30:00.123+08:00",
       "level": "ERROR",
+      "channel": "payment_callback",
       "request_ip": "1.2.3.4",
       "member": "10001",
       "session_id": "2f3d9f38-1b3d-4e5c-9e74-9dc49b4f2fd0",
@@ -55,6 +56,9 @@ Content-Encoding: gzip
       "request_url": "https://api.example.com/order/create",
       "request_headers": {},
       "request_params": {},
+      "context": {
+        "order_no": "202609211230001234"
+      },
       "error_scene": "app.exception.PaymentException",
       "error_message": "支付回调验签失败",
       "error_file": "/www/shop/app/service/Payment.php",
@@ -78,8 +82,10 @@ Content-Encoding: gzip
 10. request_headers 和 request_params 必须是 JSON 对象，不是字符串、数组或标量，编码后各自不能超过 64KB。超限时要安全截断，不能让整个批次因为超限失败。
 11. error_scene 必须非空，最长 255 字符。异常日志使用稳定的异常类名、业务错误码或模块动作标识；普通日志可使用 log.类型 或当前模块/控制器/方法。
 12. error_message 必须非空，最长 16KB。异常使用异常消息，普通日志使用实际日志内容。
-13. error_file 最长 2048 字符，error_line 必须大于 0，error_stack 最长 64KB；没有值时可以不提交或传空值。
-14. 优先复用项目已有异常处理链。异常对象可用时，使用 getMessage、getFile、getLine、getTraceAsString 提取错误信息，不要重复创建两套异常处理。
+13. channel 为可选的日志来源端标识，最长 64 字符，取值由项目自身固定（例如 admin、user、cli、agent、system_api、payment_callback、system），logd 不校验枚举；没有值时可以不提交。注意：日志中禁止出现未脱敏的账号、密码、Token、AppKey 或代理连接凭据。
+14. context 为可选的结构化业务上下文 JSON 对象，编码后不超过 64KB；没有值时可以不提交或传 null。不要和 error_message 重复，只放便于检索的业务键值。
+15. error_file 最长 2048 字符，error_line 必须大于 0，error_stack 最长 64KB；没有值时可以不提交或传空值。
+16. 优先复用项目已有异常处理链。异常对象可用时，使用 getMessage、getFile、getLine、getTraceAsString 提取错误信息，不要重复创建两套异常处理。
 
 五、ThinkPHP 日志级别映射
 
@@ -103,9 +109,10 @@ DEBUG 映射为 DEBUG。
 1. 触发一条普通 INFO 日志和一条 PHP 异常日志。
 2. 确认两次请求都返回 HTTP 202。
 3. 确认 logd 后台能按 project_key、node_key、level 和时间查到日志。
-4. 确认日志列表包含 request_method、member、session_id，异常日志包含 error_scene、error_message、error_file、error_line 和 error_stack。
-5. 确认 logd 不可用时业务请求不会被远程日志异常中断。
-6. 不要新增单元测试，优先用真实 PHP 请求做集成验证。
+4. 确认日志列表包含 request_method、member、session_id、channel，异常日志包含 error_scene、error_message、error_file、error_line 和 error_stack。
+5. 确认 logd 后台可以按 channel 精确筛选，详情页能看到 context。
+6. 确认 logd 不可用时业务请求不会被远程日志异常中断。
+7. 不要新增单元测试，优先用真实 PHP 请求做集成验证。
 
 完成后列出修改的文件、需要补充的配置项和验证命令。若无法连接 logd，明确说明未验证，不要伪造结果。
 ```

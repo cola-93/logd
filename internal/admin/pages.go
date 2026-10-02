@@ -18,6 +18,7 @@ import (
 
 	"logd/internal/monitor"
 	"logd/internal/store"
+	"logd/internal/web"
 )
 
 var (
@@ -53,6 +54,7 @@ type logFilterForm struct {
 	ProjectKey string
 	NodeKey    string
 	Level      string
+	Channel    string
 	ErrorScene string
 	RequestIP  string
 	Member     string
@@ -75,6 +77,8 @@ type logListItem struct {
 	ProjectKey   string    `json:"project_key"`
 	NodeKey      string    `json:"node_key"`
 	Level        string    `json:"level"`
+	Channel      string    `json:"channel"`
+	ChannelLabel string    `json:"channel_label"`
 	RequestIP    string    `json:"request_ip"`
 	SessionID    string    `json:"session_id"`
 	ErrorScene   string    `json:"error_scene"`
@@ -249,6 +253,8 @@ func (h *Handler) logsPage(w http.ResponseWriter, r *http.Request) {
 				ProjectKey:   row.ProjectKey,
 				NodeKey:      row.NodeKey,
 				Level:        row.Level,
+				Channel:      row.Channel,
+				ChannelLabel: web.ChannelLabel(row.Channel),
 				RequestIP:    row.RequestIP,
 				SessionID:    row.SessionID,
 				ErrorScene:   row.ErrorScene,
@@ -612,6 +618,7 @@ func (h *Handler) parseLogFilters(r *http.Request, requireTime bool) (parsedLogF
 		ProjectKey: strings.TrimSpace(query.Get("project_key")),
 		NodeKey:    strings.TrimSpace(query.Get("node_key")),
 		Level:      level,
+		Channel:    strings.TrimSpace(query.Get("channel")),
 		ErrorScene: strings.TrimSpace(query.Get("error_scene")),
 		RequestIP:  requestIP,
 		Member:     strings.TrimSpace(query.Get("member")),
@@ -635,6 +642,7 @@ func (h *Handler) parseLogFilters(r *http.Request, requireTime bool) (parsedLogF
 			ProjectKey: filter.ProjectKey,
 			NodeKey:    filter.NodeKey,
 			Level:      filter.Level,
+			Channel:    filter.Channel,
 			ErrorScene: filter.ErrorScene,
 			RequestIP:  filter.RequestIP,
 			Member:     filter.Member,
@@ -680,6 +688,7 @@ func buildLogsPageURL(form logFilterForm, cursor string, trail string) string {
 	setIfNotEmpty(values, "project_key", form.ProjectKey)
 	setIfNotEmpty(values, "node_key", form.NodeKey)
 	setIfNotEmpty(values, "level", form.Level)
+	setIfNotEmpty(values, "channel", form.Channel)
 	setIfNotEmpty(values, "error_scene", form.ErrorScene)
 	setIfNotEmpty(values, "request_ip", form.RequestIP)
 	setIfNotEmpty(values, "member", form.Member)

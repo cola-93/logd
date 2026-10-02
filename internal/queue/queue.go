@@ -11,6 +11,7 @@ type Event struct {
 	EventID        string
 	EventTime      time.Time
 	Level          string
+	Channel        string
 	ProjectKey     string
 	NodeKey        string
 	RequestIP      string
@@ -20,6 +21,7 @@ type Event struct {
 	RequestURL     string
 	RequestHeaders json.RawMessage
 	RequestParams  json.RawMessage
+	Context        json.RawMessage
 	ErrorScene     string
 	ErrorMessage   string
 	ErrorFile      string

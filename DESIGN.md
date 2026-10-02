@@ -186,6 +186,7 @@ CREATE TABLE log_events (
     node_key         text        NOT NULL,
     locked           boolean     NOT NULL DEFAULT false,
 
+    channel          varchar(64),
     request_ip       inet        NOT NULL,
     member           text        NOT NULL DEFAULT '',
     session_id       text        NOT NULL DEFAULT '',
@@ -193,6 +194,7 @@ CREATE TABLE log_events (
     request_url      text        NOT NULL,
     request_headers  jsonb,
     request_params   jsonb,
+    context          jsonb,
 
     error_scene      text        NOT NULL,
     error_message    text        NOT NULL,
@@ -224,6 +226,7 @@ CREATE TABLE log_events_other
 | `event_time` | PHP 请求体 |
 | `received_at` | 日志中心生成 |
 | `level` | PHP 请求体 |
+| `channel` | PHP 请求体，可选 |
 | `project_key` | 接口 Token 映射 |
 | `node_key` | 批次顶层字段 |
 | `request_ip` | PHP 请求体 |
@@ -233,6 +236,7 @@ CREATE TABLE log_events_other
 | `request_url` | PHP 请求体 |
 | `request_headers` | PHP 请求体 |
 | `request_params` | PHP 请求体 |
+| `context` | PHP 请求体，可选 |
 | `error_scene` | PHP 请求体 |
 | `error_message` | PHP 请求体 |
 | `error_file` | PHP 请求体 |
@@ -301,6 +305,9 @@ CREATE INDEX idx_log_events_project_time
 
 CREATE INDEX idx_log_events_node_time
     ON log_events (node_key, event_time DESC, event_id DESC);
+
+CREATE INDEX idx_log_events_channel_time
+    ON log_events (channel, event_time DESC, event_id DESC);
 
 CREATE INDEX idx_log_events_scene_time
     ON log_events (error_scene, event_time DESC, event_id DESC);
@@ -399,6 +406,7 @@ GET /api/v1/logs
 | `project_key` | 否 | 精确匹配 |
 | `node_key` | 否 | 包含匹配（不区分大小写） |
 | `level` | 否 | 精确匹配，值为 `INFO`、`WARN`、`ERROR`、`DEBUG` |
+| `channel` | 否 | 精确匹配，值为来源端枚举值 |
 | `error_scene` | 否 | 包含匹配（不区分大小写） |
 | `request_ip` | 否 | 精确匹配 |
 | `member` | 否 | 精确匹配 |
@@ -412,7 +420,7 @@ GET /api/v1/logs
 - 单次查询的最大时间跨度为 31 天。
 - 结果按照 `event_time DESC, event_id DESC` 排序。
 - 使用游标分页，不使用 `OFFSET`。
-- 列表接口不返回 `request_headers`、`request_params`、`error_stack` 等大字段。
+- 列表接口不返回 `request_headers`、`request_params`、`context`、`error_stack` 等大字段。
 - 仅提供必要字段的精确查询，不提供 `error_message` 和 `error_stack` 的模糊搜索。
 
 响应示例：
@@ -427,6 +435,7 @@ GET /api/v1/logs
       "project_key": "shop-api",
       "node_key": "node-sh-03",
       "level": "ERROR",
+      "channel": "payment_callback",
       "request_ip": "1.2.3.4",
       "member": "10001",
       "session_id": "2f3d9f38-1b3d-4e5c-9e74-9dc49b4f2fd0",
@@ -1111,3 +1120,12 @@ PHP 站点侧接入提示词统一维护在 [`PHP_INTEGRATION_PROMPT.md`](PHP_IN
 
 - 日志列表支持拖动表头列边界调整列宽；列总宽超过列表容器时显示底部横向滚动条。
 - 可拖动列边界显示一条低对比度的竖线，悬停和拖动时高亮。
+
+### 2026-10-02 第三十八轮
+
+- 日志提交字段新增可选 `channel`（来源端）和 `context`（结构化业务上下文），`context` 允许缺省或传 `null`。
+- `log_events` 新增 `channel varchar(64)` 和 `context jsonb`，并新增 `idx_log_events_channel_time`。
+- 增量迁移文件为 `002_add_channel_context.sql`。
+- 日志列表新增来源端列和来源端筛选参数（精确匹配），详情页和详情接口返回 `channel` 与 `context`。
+- 详情接口额外返回中文展示名 `channel_label`；来源端枚举由写入方约定，日志中心不校验。
+- 列表接口不返回 `context`，按条件删除日志同样支持 `channel` 筛选。

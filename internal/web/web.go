@@ -30,9 +30,10 @@ func New() (*Renderer, error) {
 	} {
 		parsed, err := template.New("layout").
 			Funcs(template.FuncMap{
-				"formatTime": formatTime,
-				"prettyJSON": prettyJSON,
-				"enabled":    enabled,
+				"formatTime":   formatTime,
+				"prettyJSON":   prettyJSON,
+				"enabled":      enabled,
+				"channelLabel": ChannelLabel,
 			}).
 			ParseFS(
 				templateFiles,
@@ -97,4 +98,25 @@ func enabled(value bool) string {
 		return "已启用"
 	}
 	return "已禁用"
+}
+
+// channelLabels 是日志来源端（channel）的展示名。
+//
+// 取值集合由写入方（PHP 端 app\common\library\Log::CHANNEL_*）固定，
+// 这里只做展示映射，不做校验，遇到未知值原样返回。
+var channelLabels = map[string]string{
+	"admin":            "后台",
+	"user":             "用户端",
+	"cli":              "命令行",
+	"agent":            "代理商",
+	"system_api":       "系统接口",
+	"payment_callback": "支付回调",
+	"system":           "共享层",
+}
+
+func ChannelLabel(value string) string {
+	if label, ok := channelLabels[value]; ok {
+		return label
+	}
+	return value
 }

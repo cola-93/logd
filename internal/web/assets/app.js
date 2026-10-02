@@ -314,6 +314,7 @@ function initLogFilterAjax() {
       "project_key",
       "node_key",
       "level",
+      "channel",
       "error_scene",
       "member",
       "session_id",
@@ -682,6 +683,7 @@ function createLogRow(item) {
     <td class="col-time cell-mono"></td>
     <td class="col-project"></td>
     <td class="col-node"></td>
+    <td class="col-channel"></td>
     <td class="col-level"><span class="level"></span></td>
     <td class="col-session cell-mono"></td>
     <td class="col-scene"></td>
@@ -700,10 +702,11 @@ function createLogRow(item) {
   setCell(1, formatDateTime(item.event_time));
   setCell(2, item.project_key);
   setCell(3, item.node_key);
-  setCell(5, item.session_id);
-  setCell(6, item.error_scene);
-  setCell(7, item.error_message);
-  setCell(8, item.request_ip);
+  setCell(4, item.channel_label || item.channel);
+  setCell(6, item.session_id);
+  setCell(7, item.error_scene);
+  setCell(8, item.error_message);
+  setCell(9, item.request_ip);
 
   const level = row.querySelector(".col-level .level");
   level.textContent = item.level;
@@ -721,7 +724,7 @@ function createLogRow(item) {
 function createEmptyLogRow() {
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = 10;
+  cell.colSpan = 11;
   cell.style.textAlign = "center";
   cell.style.padding = "48px 16px";
   cell.style.color = "var(--text-muted)";
@@ -832,6 +835,7 @@ function initLogDeleteActions(table) {
       "project_key",
       "node_key",
       "level",
+      "channel",
       "error_scene",
       "member",
       "session_id",
@@ -1055,6 +1059,8 @@ function clearLogDetail() {
     "card-event-id",
     "card-received-at",
     "card-scene",
+    "card-channel",
+    "card-context",
     "card-member",
     "card-session",
     "card-url",
@@ -1114,6 +1120,8 @@ function populateDetail(item) {
 
   setFieldText("card-received-at", formatDateTime(item.received_at));
   setFieldText("card-scene", item.error_scene || "-");
+  setFieldText("card-channel", item.channel_label || item.channel || "-");
+  setFieldText("card-context", item.context ? formatJSON(item.context) : "-");
   setFieldText("card-member", item.member || "-");
   setFieldText("card-session", item.session_id || "-");
   setFieldText("card-url", (item.request_method ? item.request_method + " " : "") + (item.request_url || "-"));

@@ -120,6 +120,7 @@ Content-Encoding: gzip
       "event_id": "4f5b4fd5-42b8-47d5-a0db-0273cd76f574",
       "event_time": "2026-09-21T12:30:00.123+08:00",
       "level": "ERROR",
+      "channel": "payment_callback",
       "request_ip": "1.2.3.4",
       "member": "10001",
       "session_id": "2f3d9f38-1b3d-4e5c-9e74-9dc49b4f2fd0",
@@ -131,6 +132,10 @@ Content-Encoding: gzip
       },
       "request_params": {
         "order_id": 10001
+      },
+      "context": {
+        "order_no": "202609211230001234",
+        "payment_channel": "airwallex"
       },
       "error_scene": "payment.callback.signature_invalid",
       "error_message": "支付回调验签失败",
@@ -151,6 +156,7 @@ Content-Encoding: gzip
 | `logs[].event_id` | 是 | string | UUID，批次内不能重复 |
 | `logs[].event_time` | 是 | string | RFC3339 时间，必须在接收窗口内 |
 | `logs[].level` | 是 | string | `INFO`、`WARN`、`ERROR`、`DEBUG` |
+| `logs[].channel` | 否 | string | 日志来源端，最大 64 个字符，用于精确查询 |
 | `logs[].request_ip` | 是 | string | 合法 IPv4 或 IPv6 |
 | `logs[].member` | 否 | string | 最大 255 个字符，用于精确查询 |
 | `logs[].session_id` | 否 | string | 最大 255 个字符，用于精确查询 |
@@ -158,6 +164,7 @@ Content-Encoding: gzip
 | `logs[].request_url` | 是 | string | 1 到 8192 个字符 |
 | `logs[].request_headers` | 否 | object | JSON 对象，最大 64KB |
 | `logs[].request_params` | 否 | object | JSON 对象，最大 64KB |
+| `logs[].context` | 否 | object | 结构化业务上下文，JSON 对象，最大 64KB；可缺省或传 `null` |
 | `logs[].error_scene` | 是 | string | 1 到 255 个字符 |
 | `logs[].error_message` | 是 | string | 1 到 16KB |
 | `logs[].error_file` | 否 | string | 最大 2048 个字符 |
@@ -168,6 +175,7 @@ Content-Encoding: gzip
 
 - `project_key` 不提交，由 Bearer Token 映射得到。
 - `node_key` 是批次顶层字段，表示日志来源节点。
+- `channel` 是每条日志各自的来源端，约定取值为 `admin`、`user`、`cli`、`agent`、`system_api`、`payment_callback`、`system`；日志中心不校验枚举，只限制长度，未知值原样保存。
 - 整个批次完整校验，任意一条不合法时整个请求失败，不支持部分成功。
 - 解压后的请求体最大为 5MB。
 - `event_time` 不能晚于服务当前时间 5 分钟。
@@ -221,6 +229,7 @@ curl -X POST http://127.0.0.1:7878/api/v1/logs/batch \
       "event_id": "4f5b4fd5-42b8-47d5-a0db-0273cd76f574",
       "event_time": "2026-09-21T12:30:00+08:00",
       "level": "ERROR",
+      "channel": "payment_callback",
       "request_ip": "1.2.3.4",
       "member": "10001",
       "session_id": "2f3d9f38-1b3d-4e5c-9e74-9dc49b4f2fd0",
@@ -228,6 +237,7 @@ curl -X POST http://127.0.0.1:7878/api/v1/logs/batch \
       "request_url": "https://api.example.com/order/create",
       "request_headers": {},
       "request_params": {},
+      "context": {},
       "error_scene": "payment.callback.signature_invalid",
       "error_message": "支付回调验签失败",
       "error_file": "/www/shop/app/service/Payment.php",
@@ -378,6 +388,7 @@ GET /api/v1/logs
 | `project_key` | 否 | 精确匹配 |
 | `node_key` | 否 | 包含匹配（不区分大小写） |
 | `level` | 否 | `INFO`、`WARN`、`ERROR`、`DEBUG` |
+| `channel` | 否 | 精确匹配，取值为来源端枚举值 |
 | `error_scene` | 否 | 包含匹配（不区分大小写） |
 | `request_ip` | 否 | 精确匹配 |
 | `member` | 否 | 精确匹配 |
@@ -390,7 +401,7 @@ GET /api/v1/logs
 - `start_time` 必须早于 `end_time`。
 - 单次查询时间跨度不能超过 31 天。
 - 结果按 `event_time DESC, event_id DESC` 排序。
-- 列表不返回 `request_headers`、`request_params`、`error_file`、`error_line` 和 `error_stack`。
+- 列表不返回 `request_headers`、`request_params`、`context`、`error_file`、`error_line` 和 `error_stack`。
 - 当前不支持 `error_message` 和 `error_stack` 模糊搜索。
 
 成功响应：
@@ -405,6 +416,7 @@ GET /api/v1/logs
       "project_key": "shop-api",
       "node_key": "node-sh-03",
       "level": "ERROR",
+      "channel": "payment_callback",
       "locked": false,
       "request_ip": "1.2.3.4",
       "member": "10001",
@@ -421,6 +433,8 @@ GET /api/v1/logs
 ```
 
 没有下一页时，`next_cursor` 返回空字符串，`has_more` 返回 `false`。
+
+列表和详情接口都返回原始 `channel` 值；详情接口额外返回中文展示名 `channel_label`，未识别或为空的 `channel` 时 `channel_label` 为空字符串。
 
 示例：
 
@@ -454,6 +468,8 @@ GET /api/v1/logs/{event_id}?level=ERROR&event_time=2026-09-21T12%3A30%3A00.123%2
   "project_key": "shop-api",
   "node_key": "node-sh-03",
   "level": "ERROR",
+  "channel": "payment_callback",
+  "channel_label": "支付回调",
   "locked": false,
   "request_ip": "1.2.3.4",
   "member": "10001",
@@ -468,13 +484,16 @@ GET /api/v1/logs/{event_id}?level=ERROR&event_time=2026-09-21T12%3A30%3A00.123%2
   "request_params": {
     "order_id": 10001
   },
+  "context": {
+    "order_no": "202609211230001234"
+  },
   "error_file": "/www/shop/app/service/Payment.php",
   "error_line": 126,
   "error_stack": "..."
 }
 ```
 
-未提交 `member` 或 `session_id` 时列表和详情接口返回空字符串；其他可空字段在未提交时返回 `null`。
+未提交 `member` 或 `session_id` 时列表和详情接口返回空字符串；`channel` 未提交时返回空字符串。其他可空字段在未提交时返回 `null`。
 
 错误：
 
@@ -767,7 +786,7 @@ Content-Type: application/x-www-form-urlencoded
 X-CSRF-Token: <csrf-token>
 ```
 
-表单字段与 `GET /admin/logs` 的查询参数一致，可传 `start_time`、`end_time`、`project_key`、`node_key`、`level`、`error_scene`、`member`、`session_id` 和 `request_ip`。删除范围不受当前已加载条数限制。
+表单字段与 `GET /admin/logs` 的查询参数一致，可传 `start_time`、`end_time`、`project_key`、`node_key`、`level`、`channel`、`error_scene`、`member`、`session_id` 和 `request_ip`。删除范围不受当前已加载条数限制。
 
 #### 9.3 按目录范围删除目录及日志
 

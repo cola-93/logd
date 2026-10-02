@@ -904,6 +904,7 @@ body.is-log-dragging .logs-data-table tbody tr {
 .col-time { width: 180px; }
 .col-project { width: 90px; }
 .col-node { width: 90px; }
+.col-channel { width: 84px; text-align: center; }
 .col-level { width: 66px; text-align: center; }
 .col-method { width: 74px; text-align: center; }
 .col-member { width: 120px; }

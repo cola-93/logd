@@ -85,6 +85,15 @@
           <div class="cell-label">错误行号</div>
           <div class="cell-value cell-mono">{{if .Detail.ErrorLine}}{{.Detail.ErrorLine}}{{else}}-{{end}}</div>
         </div>
+
+        <div class="overview-cell span-2">
+          <div class="cell-label">来源端</div>
+          <div class="cell-value">{{if .Detail.Channel}}{{channelLabel .Detail.Channel}}{{else}}-{{end}}</div>
+        </div>
+        <div class="overview-cell span-2">
+          <div class="cell-label">日志上下文 (Context)</div>
+          <div class="cell-value cell-mono">{{if .Detail.Context}}{{prettyJSON .Detail.Context}}{{else}}-{{end}}</div>
+        </div>
       </div>
 
       <!-- Error Stack (no inner scrollbar, expands naturally) -->

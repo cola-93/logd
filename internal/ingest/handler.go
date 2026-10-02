@@ -50,6 +50,7 @@ type logRequest struct {
 	EventID        string          `json:"event_id"`
 	EventTime      string          `json:"event_time"`
 	Level          string          `json:"level"`
+	Channel        string          `json:"channel"`
 	RequestIP      string          `json:"request_ip"`
 	Member         string          `json:"member"`
 	SessionID      string          `json:"session_id"`
@@ -57,6 +58,7 @@ type logRequest struct {
 	RequestURL     string          `json:"request_url"`
 	RequestHeaders json.RawMessage `json:"request_headers"`
 	RequestParams  json.RawMessage `json:"request_params"`
+	Context        json.RawMessage `json:"context"`
 	ErrorScene     string          `json:"error_scene"`
 	ErrorMessage   string          `json:"error_message"`
 	ErrorFile      string          `json:"error_file"`
@@ -283,6 +285,10 @@ func validateBatch(
 		if !validLevel(item.Level) {
 			return nil, invalid(index, "level", "level must be INFO, WARN, ERROR or DEBUG")
 		}
+		// channel 是日志来源端，允许为空（历史数据或未指定的调用点）。
+		if err := validateLength(item.Channel, 0, 64); err != nil {
+			return nil, invalid(index, "channel", "channel is invalid")
+		}
 		requestIP := net.ParseIP(item.RequestIP)
 		if requestIP == nil {
 			return nil, invalid(index, "request_ip", "request_ip is invalid")
@@ -305,6 +311,9 @@ func validateBatch(
 		if err := validateJSONObject(item.RequestParams, maxParamsBytes); err != nil {
 			return nil, invalid(index, "request_params", err.Error())
 		}
+		if err := validateNullableJSONObject(item.Context, maxParamsBytes); err != nil {
+			return nil, invalid(index, "context", err.Error())
+		}
 		if err := validateLength(item.ErrorScene, 1, 255); err != nil {
 			return nil, invalid(index, "error_scene", "error_scene is invalid")
 		}
@@ -325,6 +334,7 @@ func validateBatch(
 			EventID:        eventID,
 			EventTime:      eventTime,
 			Level:          item.Level,
+			Channel:        strings.TrimSpace(item.Channel),
 			ProjectKey:     projectKey,
 			NodeKey:        request.NodeKey,
 			RequestIP:      requestIP.String(),
@@ -334,6 +344,7 @@ func validateBatch(
 			RequestURL:     item.RequestURL,
 			RequestHeaders: item.RequestHeaders,
 			RequestParams:  item.RequestParams,
+			Context:        normalizeJSONObject(item.Context),
 			ErrorScene:     item.ErrorScene,
 			ErrorMessage:   item.ErrorMessage,
 			ErrorFile:      item.ErrorFile,
@@ -370,6 +381,32 @@ func validateJSONObject(value json.RawMessage, maxLength int) error {
 		return fmt.Errorf("must be a valid JSON object")
 	}
 	return nil
+}
+
+// validateNullableJSONObject 允许字段缺省或显式 null，其余情况必须是合法 JSON 对象。
+func validateNullableJSONObject(value json.RawMessage, maxLength int) error {
+	if len(value) == 0 {
+		return nil
+	}
+	if len(value) > maxLength {
+		return fmt.Errorf("JSON object is too large")
+	}
+	if isJSONNull(value) {
+		return nil
+	}
+	return validateJSONObject(value, maxLength)
+}
+
+// normalizeJSONObject 把缺省、空白和 null 统一成 nil，避免落库成 jsonb 的 null 字面量。
+func normalizeJSONObject(value json.RawMessage) json.RawMessage {
+	if len(bytes.TrimSpace(value)) == 0 || isJSONNull(value) {
+		return nil
+	}
+	return value
+}
+
+func isJSONNull(value json.RawMessage) bool {
+	return bytes.Equal(bytes.TrimSpace(value), []byte("null"))
 }
 
 func validLevel(level string) bool {
