@@ -119,6 +119,7 @@ func run() error {
 		Location:      location,
 		Password:      cfg.Admin.Password,
 		SessionSecret: cfg.Admin.SessionSecret,
+		LoginPath:     cfg.Admin.LoginPath,
 		OnRetentionChange: func(days int) {
 			ingestHandler.SetRetentionDays(days)
 		},

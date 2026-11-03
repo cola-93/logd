@@ -38,6 +38,7 @@ type Options struct {
 	Location          *time.Location
 	Password          string
 	SessionSecret     string
+	LoginPath         string
 	OnRetentionChange func(int)
 	LastWrite         func() time.Time
 	Logger            *slog.Logger
@@ -53,9 +54,11 @@ type Handler struct {
 	location          *time.Location
 	passwordHash      []byte
 	sessionSecret     []byte
+	loginPath         string
 	onRetentionChange func(int)
 	lastWrite         func() time.Time
 	logger            *slog.Logger
+	throttle          *loginThrottle
 }
 
 func New(options Options) (*Handler, error) {
@@ -76,6 +79,14 @@ func New(options Options) (*Handler, error) {
 		return nil, fmt.Errorf("last write callback is required")
 	}
 
+	loginPath, err := resolveLoginPath(options.LoginPath)
+	if err != nil {
+		return nil, err
+	}
+	if options.Logger != nil {
+		options.Logger.Info("admin login path", "path", loginPath)
+	}
+
 	return &Handler{
 		db:                options.DB,
 		renderer:          options.Renderer,
@@ -86,15 +97,17 @@ func New(options Options) (*Handler, error) {
 		location:          options.Location,
 		passwordHash:      passwordHash,
 		sessionSecret:     []byte(options.SessionSecret),
+		loginPath:         loginPath,
 		onRetentionChange: options.OnRetentionChange,
 		lastWrite:         options.LastWrite,
 		logger:            options.Logger,
+		throttle:          newLoginThrottle(),
 	}, nil
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /admin/login", h.loginPage)
-	mux.HandleFunc("POST /admin/login", h.loginPageSubmit)
+	mux.HandleFunc("GET "+h.loginPath, h.loginPage)
+	mux.HandleFunc("POST "+h.loginPath, h.loginPageSubmit)
 	mux.HandleFunc("POST /admin/logout", h.logoutPage)
 	mux.HandleFunc("GET /admin/logs", h.authenticatedPage(h.logsPage))
 	mux.HandleFunc("POST /admin/logs/delete-selected", h.authenticatedAPI(h.deleteSelectedLogsPage))
@@ -128,7 +141,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 func (h *Handler) authenticatedPage(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := h.sessionNonce(r); !ok {
-			http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+			http.Redirect(w, r, h.loginPath, http.StatusSeeOther)
 			return
 		}
 		next(w, r)
@@ -150,32 +163,39 @@ func (h *Handler) authenticatedAPI(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func (h *Handler) loginData(message string) loginPageData {
+	return loginPageData{
+		pageData:  pageData{Title: "登录", Error: message, Version: "1.0.0"},
+		LoginPath: h.loginPath,
+	}
+}
+
 func (h *Handler) loginPage(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.sessionNonce(r); ok {
 		http.Redirect(w, r, "/admin/logs", http.StatusSeeOther)
 		return
 	}
-	h.render(w, "login", http.StatusOK, loginPageData{
-		pageData: pageData{
-			Title:   "登录",
-			Version: "1.0.0",
-		},
-	})
+	h.render(w, "login", http.StatusOK, h.loginData(""))
 }
 
 func (h *Handler) loginPageSubmit(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		h.render(w, "login", http.StatusBadRequest, loginPageData{
-			pageData: pageData{Title: "登录", Error: "请求格式错误", Version: "1.0.0"},
-		})
+		h.render(w, "login", http.StatusBadRequest, h.loginData("请求格式错误"))
+		return
+	}
+	ip := clientIP(r)
+	if !h.throttle.allow(ip) {
+		h.render(w, "login", http.StatusTooManyRequests, h.loginData("密码错误次数过多，该 IP 已被锁定 24 小时"))
 		return
 	}
 	if !h.passwordMatches(r.FormValue("password")) {
-		h.render(w, "login", http.StatusUnauthorized, loginPageData{
-			pageData: pageData{Title: "登录", Error: "访问密码错误", Version: "1.0.0"},
-		})
+		if h.throttle.recordFailure(ip) {
+			h.logger.Warn("login IP banned", "ip", ip)
+		}
+		h.render(w, "login", http.StatusUnauthorized, h.loginData("访问密码错误"))
 		return
 	}
+	h.throttle.recordSuccess(ip)
 
 	_, err := h.issueSession(w, r)
 	if err != nil {
@@ -193,10 +213,19 @@ func (h *Handler) loginAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
 		return
 	}
+	ip := clientIP(r)
+	if !h.throttle.allow(ip) {
+		writeJSONError(w, http.StatusTooManyRequests, "IP_BANNED", "密码错误次数过多，该 IP 已被锁定 24 小时")
+		return
+	}
 	if !h.passwordMatches(request.Password) {
+		if h.throttle.recordFailure(ip) {
+			h.logger.Warn("login IP banned", "ip", ip)
+		}
 		writeJSONError(w, http.StatusUnauthorized, "INVALID_PASSWORD", "访问密码错误")
 		return
 	}
+	h.throttle.recordSuccess(ip)
 
 	nonce, err := h.issueSession(w, r)
 	if err != nil {
@@ -212,7 +241,7 @@ func (h *Handler) loginAPI(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) logoutPage(w http.ResponseWriter, r *http.Request) {
 	nonce, ok := h.sessionNonce(r)
 	if !ok {
-		http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+		http.Redirect(w, r, h.loginPath, http.StatusSeeOther)
 		return
 	}
 	if !h.validCSRF(r, nonce) {
@@ -220,7 +249,7 @@ func (h *Handler) logoutPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.clearSession(w, r)
-	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+	http.Redirect(w, r, h.loginPath, http.StatusSeeOther)
 }
 
 func (h *Handler) logoutAPI(w http.ResponseWriter, r *http.Request) {
@@ -352,6 +381,21 @@ func writeJSONError(w http.ResponseWriter, status int, code, message string) {
 			"message": message,
 		},
 	})
+}
+
+func resolveLoginPath(configured string) (string, error) {
+	value := strings.TrimSpace(configured)
+	if value == "" {
+		raw := make([]byte, 12)
+		if _, err := rand.Read(raw); err != nil {
+			return "", fmt.Errorf("generate login path: %w", err)
+		}
+		value = hex.EncodeToString(raw)
+	}
+	if !strings.HasPrefix(value, "/") {
+		value = "/" + value
+	}
+	return value, nil
 }
 
 func newUUID() (string, error) {

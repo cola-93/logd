@@ -675,7 +675,7 @@ V1 管理后台只包含登录、日志列表、日志详情、项目 Token、�
 页面路由：
 
 ```text
-GET /admin/login
+GET <login_path>        # 登录页，路径由 admin.login_path 配置，留空时启动随机生成
 GET /admin/logs
 GET /admin/logs/{event_id}
 GET /admin/project-tokens

@@ -28,6 +28,7 @@ func SystemLocation() *time.Location {
 type AdminConfig struct {
 	Password      string `yaml:"password"`
 	SessionSecret string `yaml:"session_secret"`
+	LoginPath     string `yaml:"login_path"`
 }
 
 type ServerConfig struct {

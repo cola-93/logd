@@ -727,8 +727,8 @@ GET /api/v1/admin/status
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `GET` | `/admin/login` | 登录页 |
-| `POST` | `/admin/login` | 登录表单提交 |
+| `GET` | `<login_path>` | 登录页（路径由 `admin.login_path` 配置，留空时启动随机生成） |
+| `POST` | `<login_path>` | 登录表单提交 |
 | `POST` | `/admin/logout` | 退出登录 |
 | `GET` | `/admin/logs` | 日志列表 |
 | `POST` | `/admin/logs/delete-selected` | 批量删除已选日志 |

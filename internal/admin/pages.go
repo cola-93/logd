@@ -46,6 +46,7 @@ type pageData struct {
 
 type loginPageData struct {
 	pageData
+	LoginPath string
 }
 
 type logFilterForm struct {

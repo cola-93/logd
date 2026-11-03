@@ -63,10 +63,10 @@ Content-Encoding: gzip
 后台入口：
 
 ```text
-GET /admin/login
+GET <login_path>
 ```
 
-默认监听 `127.0.0.1:7878` 时，本机访问地址为 `http://127.0.0.1:7878/admin/login`。
+登录入口路径由 `admin.login_path` 配置；留空时每次启动随机生成，并在启动日志中打印（`admin login path`）。默认监听 `127.0.0.1:7878` 时，本机访问地址为 `http://127.0.0.1:7878/<login_path>`。
 
 ## 当前进度
 

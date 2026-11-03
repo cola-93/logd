@@ -11,7 +11,7 @@
     <p>请输入管理员访问密码以进入监控平台</p>
   </div>
   {{if .Error}}<div class="msg-alert error">{{.Error}}</div>{{end}}
-  <form method="post" action="/admin/login" style="display: flex; flex-direction: column; gap: 14px;">
+  <form method="post" action="{{.LoginPath}}" style="display: flex; flex-direction: column; gap: 14px;">
     <div>
       <input class="form-input" type="password" name="password" required autofocus autocomplete="current-password" placeholder="输入管理密码">
     </div>

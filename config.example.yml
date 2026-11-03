@@ -1,6 +1,8 @@
 admin:
   password: "replace-me"
   session_secret: "replace-with-at-least-32-random-characters"
+  # 登录入口路径。留空时每次启动随机生成，并在启动日志中打印；建议配置为一个难以猜测的固定随机串。
+  login_path: ""
 
 server:
   listen: "127.0.0.1:7878"
