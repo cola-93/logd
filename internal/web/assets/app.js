@@ -43,6 +43,19 @@ function initClipboardHandlers() {
       }
       return;
     }
+
+    const copyIpBtn = event.target.closest("#card-copy-ip-btn");
+    if (copyIpBtn) {
+      const ipElem = document.getElementById("card-ip");
+      if (ipElem) {
+        const text = ipElem.textContent.trim();
+        if (text && text !== "-") {
+          await copyText(text);
+          triggerCopyFeedback(copyIpBtn, "已复制");
+        }
+      }
+      return;
+    }
   });
 }
 
@@ -306,6 +319,9 @@ function initLogFilterAjax() {
     submitLogFilters();
   });
 
+  const limitSelect = document.getElementById("filter-limit");
+  limitSelect?.addEventListener("change", () => submitLogFilters());
+
   const resetBtn = document.getElementById("log-filter-reset");
   resetBtn?.addEventListener("click", () => {
     [
@@ -319,6 +335,9 @@ function initLogFilterAjax() {
       "member",
       "session_id",
       "request_ip",
+      "request_method",
+      "request_host",
+      "request_uri",
     ].forEach((name) => {
       const input = form.elements.namedItem(name);
       if (input) input.value = "";
@@ -417,6 +436,7 @@ function initLogListAndDetail() {
   if (!table) return;
 
   initColumnResizing(table);
+  initColumnPicker(table);
 
   const tableBody = table.querySelector("tbody");
   let currentRow = null;
@@ -681,13 +701,15 @@ function createLogRow(item) {
       </div>
     </td>
     <td class="col-time cell-mono"></td>
-    <td class="col-project"></td>
     <td class="col-node"></td>
     <td class="col-channel"></td>
     <td class="col-level"><span class="level"></span></td>
     <td class="col-session cell-mono"></td>
     <td class="col-scene"></td>
     <td class="col-msg"></td>
+    <td class="col-method"></td>
+    <td class="col-host cell-mono"></td>
+    <td class="col-uri cell-mono"></td>
     <td class="col-ip cell-mono"></td>
     <td class="col-action" onclick="event.stopPropagation();">
       <a class="btn btn-ghost btn-xs" target="_blank" rel="noopener noreferrer" title="新窗口打开完整详情">新窗口 ↗</a>
@@ -700,13 +722,15 @@ function createLogRow(item) {
     cells[index].title = value || "";
   };
   setCell(1, formatDateTime(item.event_time));
-  setCell(2, item.project_key);
-  setCell(3, item.node_key);
-  setCell(4, item.channel_label || item.channel);
-  setCell(6, item.session_id);
-  setCell(7, item.error_scene);
-  setCell(8, item.error_message);
-  setCell(9, item.request_ip);
+  setCell(2, item.node_key);
+  setCell(3, item.channel_label || item.channel);
+  setCell(5, item.session_id);
+  setCell(6, item.error_scene);
+  setCell(7, item.error_message);
+  setCell(8, item.request_method);
+  setCell(9, item.request_host);
+  setCell(10, item.request_uri);
+  setCell(11, item.request_ip);
 
   const level = row.querySelector(".col-level .level");
   level.textContent = item.level;
@@ -724,7 +748,7 @@ function createLogRow(item) {
 function createEmptyLogRow() {
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = 11;
+  cell.colSpan = 13;
   cell.style.textAlign = "center";
   cell.style.padding = "48px 16px";
   cell.style.color = "var(--text-muted)";
@@ -758,6 +782,24 @@ function updateLogSelectionUI(table) {
   }
 }
 
+const LOG_COLUMNS = [
+  { key: "time", label: "时间" },
+  { key: "node", label: "节点" },
+  { key: "channel", label: "来源端" },
+  { key: "level", label: "级别" },
+  { key: "session", label: "Session ID" },
+  { key: "scene", label: "错误场景" },
+  { key: "msg", label: "错误信息" },
+  { key: "method", label: "动作" },
+  { key: "host", label: "主机" },
+  { key: "uri", label: "路径" },
+  { key: "ip", label: "请求 IP" },
+];
+
+const COLUMN_STORAGE_KEY = "logd:visible-columns";
+const hiddenColumns = new Set();
+let columnLayout = null;
+
 function initColumnResizing(table) {
   const headers = Array.from(table.querySelectorAll("thead th"));
   if (headers.length === 0 || table.querySelector("colgroup[data-column-resize]")) return;
@@ -765,10 +807,12 @@ function initColumnResizing(table) {
   const colgroup = document.createElement("colgroup");
   colgroup.dataset.columnResize = "true";
 
+  const keys = headers.map((header) => header.dataset.col || "");
   const widths = headers.map((header, index) => {
     const width = Math.round(header.getBoundingClientRect().width);
     const column = document.createElement("col");
     column.style.width = `${width}px`;
+    column.dataset.col = keys[index];
     colgroup.appendChild(column);
 
     const handle = document.createElement("span");
@@ -782,10 +826,15 @@ function initColumnResizing(table) {
   table.insertBefore(colgroup, table.firstChild);
 
   const syncTableWidth = () => {
-    const totalWidth = widths.reduce((sum, width) => sum + width, 0);
+    const totalWidth = widths.reduce(
+      (sum, width, index) => (hiddenColumns.has(keys[index]) ? sum : sum + width),
+      0,
+    );
     table.style.width = `${totalWidth}px`;
     table.style.minWidth = "100%";
   };
+
+  columnLayout = { table, colgroup, widths, keys, sync: syncTableWidth };
   syncTableWidth();
 
   table.querySelector("thead")?.addEventListener("pointerdown", (event) => {
@@ -821,6 +870,93 @@ function initColumnResizing(table) {
   });
 }
 
+function initColumnPicker(table) {
+  const button = document.getElementById("column-picker-btn");
+  const menu = document.getElementById("column-picker-menu");
+  if (!button || !menu) return;
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLUMN_STORAGE_KEY) || "[]");
+    if (Array.isArray(saved)) {
+      saved.forEach((key) => {
+        if (LOG_COLUMNS.some((column) => column.key === key)) {
+          hiddenColumns.add(key);
+        }
+      });
+    }
+  } catch {
+    // Ignore malformed saved state.
+  }
+
+  menu.replaceChildren(
+    ...LOG_COLUMNS.map((column) => {
+      const item = document.createElement("label");
+      item.className = "column-picker-item";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = !hiddenColumns.has(column.key);
+
+      const text = document.createElement("span");
+      text.textContent = column.label;
+
+      item.append(checkbox, text);
+
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) {
+          hiddenColumns.delete(column.key);
+        } else {
+          hiddenColumns.add(column.key);
+        }
+        persistColumnVisibility();
+        applyColumnVisibility();
+      });
+
+      return item;
+    }),
+  );
+
+  const closeMenu = () => {
+    menu.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+  };
+
+  button.addEventListener("click", () => {
+    const willOpen = menu.hidden;
+    menu.hidden = !willOpen;
+    button.setAttribute("aria-expanded", String(willOpen));
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!menu.contains(event.target) && !button.contains(event.target)) {
+      closeMenu();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeMenu();
+  });
+
+  applyColumnVisibility();
+}
+
+function persistColumnVisibility() {
+  try {
+    localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify([...hiddenColumns]));
+  } catch {
+    // Storage may be unavailable; visibility still applies for this session.
+  }
+}
+
+function applyColumnVisibility() {
+  const colgroup = columnLayout?.colgroup;
+  if (!colgroup) return;
+  colgroup.querySelectorAll("col[data-col]").forEach((column) => {
+    column.style.visibility = hiddenColumns.has(column.dataset.col) ? "collapse" : "";
+  });
+  columnLayout.sync();
+}
+
 function initLogDeleteActions(table) {
   const form = document.getElementById("log-filter-form");
   const filterButton = document.getElementById("delete-filter-btn");
@@ -840,6 +976,9 @@ function initLogDeleteActions(table) {
       "member",
       "session_id",
       "request_ip",
+      "request_method",
+      "request_host",
+      "request_uri",
     ].some((key) => body.get(key));
     const message = hasFilters
       ? "确认删除当前筛选条件下的所有日志？已锁定的日志不会被删除，需先解锁。此操作不可恢复。"
@@ -1027,12 +1166,6 @@ function selectLogRow(row) {
   const eventId = row.dataset.eventId;
   const level = row.dataset.level;
   const eventTime = row.dataset.eventTime;
-  const detailUrl = row.dataset.detailUrl;
-
-  const newWindowBtn = document.getElementById("card-open-new-window");
-  if (newWindowBtn) {
-    newWindowBtn.href = detailUrl || `/admin/logs/${eventId}?level=${encodeURIComponent(level)}&event_time=${encodeURIComponent(eventTime)}`;
-  }
 
   fetchLogDetail(eventId, level, eventTime);
 }
@@ -1046,17 +1179,9 @@ function clearLogDetail() {
   const loadingElem = document.getElementById("card-loading-state");
   if (loadingElem) loadingElem.style.display = "none";
 
-  const newWindowBtn = document.getElementById("card-open-new-window");
-  if (newWindowBtn) newWindowBtn.href = "#";
-
-  const badge = document.getElementById("card-level-badge");
-  if (badge) {
-    badge.textContent = "-";
-    badge.className = "level";
-  }
-
   [
     "card-event-id",
+    "card-ip",
     "card-received-at",
     "card-scene",
     "card-channel",
@@ -1111,12 +1236,7 @@ async function fetchLogDetail(eventId, level, eventTime) {
 
 function populateDetail(item) {
   setFieldText("card-event-id", item.event_id || "-");
-
-  const badge = document.getElementById("card-level-badge");
-  if (badge) {
-    badge.textContent = item.level || "-";
-    badge.className = `level level-${item.level || "INFO"}`;
-  }
+  setFieldText("card-ip", item.request_ip || "-");
 
   setFieldText("card-received-at", formatDateTime(item.received_at));
   setFieldText("card-scene", item.error_scene || "-");

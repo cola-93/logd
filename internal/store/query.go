@@ -9,19 +9,22 @@ import (
 )
 
 type LogFilter struct {
-	StartTime  time.Time
-	EndTime    time.Time
-	ProjectKey string
-	NodeKey    string
-	Level      string
-	Channel    string
-	ErrorScene string
-	RequestIP  string
-	Member     string
-	SessionID  string
-	Limit      int
-	CursorTime time.Time
-	CursorID   string
+	StartTime     time.Time
+	EndTime       time.Time
+	ProjectKey    string
+	NodeKey       string
+	Level         string
+	Channel       string
+	ErrorScene    string
+	RequestIP     string
+	RequestMethod string
+	RequestHost   string
+	RequestURI    string
+	Member        string
+	SessionID     string
+	Limit         int
+	CursorTime    time.Time
+	CursorID      string
 }
 
 type LogSummary struct {
@@ -161,6 +164,9 @@ func buildLogFilterWhere(filter LogFilter, includeCursor bool) (string, []any) {
 	addContainsFilter("error_scene", filter.ErrorScene)
 	addStringFilter("member", filter.Member)
 	addStringFilter("session_id", filter.SessionID)
+	addStringFilter("request_method", filter.RequestMethod)
+	addContainsFilter("request_url", filter.RequestHost)
+	addContainsFilter("request_url", filter.RequestURI)
 	if filter.RequestIP != "" {
 		args = append(args, filter.RequestIP)
 		where = append(where, fmt.Sprintf("request_ip = $%d::inet", len(args)))

@@ -166,7 +166,7 @@ func (h *Handler) authenticatedAPI(next http.HandlerFunc) http.HandlerFunc {
 
 func (h *Handler) loginData(message string) loginPageData {
 	return loginPageData{
-		pageData:  pageData{Title: "登录", Error: message, Version: "1.0.0"},
+		pageData:  pageData{Title: "登录", Error: message, Version: "1.1.0"},
 		LoginPath: h.loginPath,
 	}
 }

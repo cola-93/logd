@@ -124,6 +124,18 @@
         <span>IP</span>
         <input name="request_ip" value="{{.Filters.RequestIP}}" placeholder="127.0.0.1" style="width: 80px;">
       </div>
+      <div class="filter-input-group">
+        <span>动作</span>
+        <input name="request_method" value="{{.Filters.RequestMethod}}" placeholder="精确匹配" style="width: 60px;">
+      </div>
+      <div class="filter-input-group">
+        <span>主机</span>
+        <input name="request_host" value="{{.Filters.RequestHost}}" placeholder="包含匹配" style="width: 90px;">
+      </div>
+      <div class="filter-input-group">
+        <span>路径</span>
+        <input name="request_uri" value="{{.Filters.RequestURI}}" placeholder="包含匹配" style="width: 100px;">
+      </div>
       <button class="btn btn-primary btn-xs" type="submit">查询</button>
       <button class="btn btn-ghost btn-xs" type="button" id="log-filter-reset">重置</button>
 
@@ -131,6 +143,19 @@
       <div class="filter-pagination-right">
         <button class="btn btn-danger btn-xs" type="button" id="delete-filter-btn">删除所有符合条件的日志</button>
         <button class="btn btn-danger btn-xs" type="button" id="batch-delete-btn" disabled>批量删除</button>
+        <div class="column-picker">
+          <button type="button" class="btn btn-ghost btn-xs" id="column-picker-btn" aria-haspopup="true" aria-expanded="false">列 ▾</button>
+          <div class="column-picker-menu" id="column-picker-menu" hidden></div>
+        </div>
+        <div class="filter-input-group">
+          <span>每页</span>
+          <select name="limit" id="filter-limit">
+            <option value="50" {{if eq .Filters.Limit 50}}selected{{end}}>50</option>
+            <option value="100" {{if eq .Filters.Limit 100}}selected{{end}}>100</option>
+            <option value="200" {{if eq .Filters.Limit 200}}selected{{end}}>200</option>
+            <option value="300" {{if eq .Filters.Limit 300}}selected{{end}}>300</option>
+          </select>
+        </div>
         <span class="pagination-info">已加载 <strong id="logs-count">{{len .Logs}}</strong> 条</span>
       </div>
     </form>
@@ -140,17 +165,19 @@
       <table class="logs-data-table" id="logs-table">
         <thead>
           <tr>
-            <th class="col-select"><input type="checkbox" id="logs-select-all" aria-label="全选当前列表"></th>
-            <th class="col-time">时间</th>
-            <th class="col-project">项目</th>
-            <th class="col-node">节点</th>
-            <th class="col-channel">来源端</th>
-            <th class="col-level">级别</th>
-            <th class="col-session">Session ID</th>
-            <th class="col-scene">错误场景</th>
-            <th class="col-msg">错误信息</th>
-            <th class="col-ip">请求 IP</th>
-            <th class="col-action">操作</th>
+            <th class="col-select" data-col="select"><input type="checkbox" id="logs-select-all" aria-label="全选当前列表"></th>
+            <th class="col-time" data-col="time">时间</th>
+            <th class="col-node" data-col="node">节点</th>
+            <th class="col-channel" data-col="channel">来源端</th>
+            <th class="col-level" data-col="level">级别</th>
+            <th class="col-session" data-col="session">Session ID</th>
+            <th class="col-scene" data-col="scene">错误场景</th>
+            <th class="col-msg" data-col="msg">错误信息</th>
+            <th class="col-method" data-col="method">动作</th>
+            <th class="col-host" data-col="host">主机</th>
+            <th class="col-uri" data-col="uri">路径</th>
+            <th class="col-ip" data-col="ip">请求 IP</th>
+            <th class="col-action" data-col="action">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -181,13 +208,15 @@
               </div>
             </td>
             <td class="col-time cell-mono">{{formatTime .EventTime}}</td>
-            <td class="col-project" title="{{.ProjectKey}}">{{.ProjectKey}}</td>
             <td class="col-node" title="{{.NodeKey}}">{{.NodeKey}}</td>
             <td class="col-channel" title="{{.Channel}}">{{if .Channel}}{{channelLabel .Channel}}{{else}}-{{end}}</td>
             <td class="col-level"><span class="level level-{{.Level}}">{{.Level}}</span></td>
             <td class="col-session cell-mono" title="{{.SessionID}}">{{.SessionID}}</td>
             <td class="col-scene" title="{{.ErrorScene}}">{{.ErrorScene}}</td>
             <td class="col-msg" title="{{.ErrorMessage}}">{{.ErrorMessage}}</td>
+            <td class="col-method" title="{{.RequestMethod}}">{{.RequestMethod}}</td>
+            <td class="col-host cell-mono" title="{{.RequestHost}}">{{.RequestHost}}</td>
+            <td class="col-uri cell-mono" title="{{.RequestURI}}">{{.RequestURI}}</td>
             <td class="col-ip cell-mono">{{.RequestIP}}</td>
             <td class="col-action" onclick="event.stopPropagation();">
               <a class="btn btn-ghost btn-xs" href="{{.DetailURL}}" target="_blank" rel="noopener noreferrer" title="新窗口打开完整详情">
@@ -197,7 +226,7 @@
           </tr>
           {{else}}
           <tr>
-            <td colspan="11" style="text-align: center; padding: 48px 16px; color: var(--text-muted);">
+            <td colspan="13" style="text-align: center; padding: 48px 16px; color: var(--text-muted);">
               没有符合条件的日志记录
             </td>
           </tr>
@@ -217,10 +246,9 @@
           <span class="detail-title-tag">详情</span>
           <span class="detail-panel-id" id="card-event-id">-</span>
           <button type="button" class="btn btn-ghost btn-xs" id="card-copy-id-btn">复制 ID</button>
-          <span class="level" id="card-level-badge">-</span>
-          <a class="btn btn-ghost btn-xs" id="card-open-new-window" href="#" target="_blank" rel="noopener noreferrer">
-            独立窗口 ↗
-          </a>
+          <span class="detail-panel-label">请求 IP</span>
+          <span class="detail-panel-ip cell-mono" id="card-ip">-</span>
+          <button type="button" class="btn btn-ghost btn-xs" id="card-copy-ip-btn">复制 IP</button>
         </div>
         <div class="detail-panel-tabs">
           <button type="button" class="detail-tab-btn active" data-tab="tab-overview-stack">概览与堆栈</button>

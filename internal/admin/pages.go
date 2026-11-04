@@ -50,16 +50,20 @@ type loginPageData struct {
 }
 
 type logFilterForm struct {
-	StartTime  string
-	EndTime    string
-	ProjectKey string
-	NodeKey    string
-	Level      string
-	Channel    string
-	ErrorScene string
-	RequestIP  string
-	Member     string
-	SessionID  string
+	StartTime     string
+	EndTime       string
+	ProjectKey    string
+	NodeKey       string
+	Level         string
+	Channel       string
+	ErrorScene    string
+	RequestIP     string
+	RequestMethod string
+	RequestHost   string
+	RequestURI    string
+	Member        string
+	SessionID     string
+	Limit         int
 }
 
 type parsedLogFilter struct {
@@ -69,23 +73,29 @@ type parsedLogFilter struct {
 
 type logRow struct {
 	store.LogSummary
-	DetailURL string `json:"detail_url"`
+	RequestHost string
+	RequestURI  string
+	DetailURL   string `json:"detail_url"`
 }
 
 type logListItem struct {
-	EventID      string    `json:"event_id"`
-	EventTime    time.Time `json:"event_time"`
-	ProjectKey   string    `json:"project_key"`
-	NodeKey      string    `json:"node_key"`
-	Level        string    `json:"level"`
-	Channel      string    `json:"channel"`
-	ChannelLabel string    `json:"channel_label"`
-	RequestIP    string    `json:"request_ip"`
-	SessionID    string    `json:"session_id"`
-	ErrorScene   string    `json:"error_scene"`
-	ErrorMessage string    `json:"error_message"`
-	Locked       bool      `json:"locked"`
-	DetailURL    string    `json:"detail_url"`
+	EventID       string    `json:"event_id"`
+	EventTime     time.Time `json:"event_time"`
+	ProjectKey    string    `json:"project_key"`
+	NodeKey       string    `json:"node_key"`
+	Level         string    `json:"level"`
+	Channel       string    `json:"channel"`
+	ChannelLabel  string    `json:"channel_label"`
+	RequestIP     string    `json:"request_ip"`
+	RequestMethod string    `json:"request_method"`
+	RequestURL    string    `json:"request_url"`
+	RequestHost   string    `json:"request_host"`
+	RequestURI    string    `json:"request_uri"`
+	SessionID     string    `json:"session_id"`
+	ErrorScene    string    `json:"error_scene"`
+	ErrorMessage  string    `json:"error_message"`
+	Locked        bool      `json:"locked"`
+	DetailURL     string    `json:"detail_url"`
 }
 
 type logsListResponse struct {
@@ -153,7 +163,7 @@ func (h *Handler) basePageData(r *http.Request, title, active string) pageData {
 		ShowNav: true,
 		Active:  active,
 		CSRF:    h.csrfToken(nonce),
-		Version: "1.0.0",
+		Version: "1.1.0",
 	}
 }
 
@@ -196,9 +206,12 @@ func (h *Handler) logsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	rows := make([]logRow, 0, len(items))
 	for _, item := range items {
+		host, uri := splitRequestURL(item.RequestURL)
 		rows = append(rows, logRow{
-			LogSummary: item,
-			DetailURL:  h.detailURL(item, backURL),
+			LogSummary:  item,
+			RequestHost: host,
+			RequestURI:  uri,
+			DetailURL:   h.detailURL(item, backURL),
 		})
 	}
 
@@ -249,19 +262,23 @@ func (h *Handler) logsPage(w http.ResponseWriter, r *http.Request) {
 		listItems := make([]logListItem, 0, len(rows))
 		for _, row := range rows {
 			listItems = append(listItems, logListItem{
-				EventID:      row.EventID,
-				EventTime:    row.EventTime,
-				ProjectKey:   row.ProjectKey,
-				NodeKey:      row.NodeKey,
-				Level:        row.Level,
-				Channel:      row.Channel,
-				ChannelLabel: web.ChannelLabel(row.Channel),
-				RequestIP:    row.RequestIP,
-				SessionID:    row.SessionID,
-				ErrorScene:   row.ErrorScene,
-				ErrorMessage: row.ErrorMessage,
-				Locked:       row.Locked,
-				DetailURL:    row.DetailURL,
+				EventID:       row.EventID,
+				EventTime:     row.EventTime,
+				ProjectKey:    row.ProjectKey,
+				NodeKey:       row.NodeKey,
+				Level:         row.Level,
+				Channel:       row.Channel,
+				ChannelLabel:  web.ChannelLabel(row.Channel),
+				RequestIP:     row.RequestIP,
+				RequestMethod: row.RequestMethod,
+				RequestURL:    row.RequestURL,
+				RequestHost:   row.RequestHost,
+				RequestURI:    row.RequestURI,
+				SessionID:     row.SessionID,
+				ErrorScene:    row.ErrorScene,
+				ErrorMessage:  row.ErrorMessage,
+				Locked:        row.Locked,
+				DetailURL:     row.DetailURL,
 			})
 		}
 		writeJSON(w, http.StatusOK, logsListResponse{
@@ -614,17 +631,20 @@ func (h *Handler) parseLogFilters(r *http.Request, requireTime bool) (parsedLogF
 	}
 
 	filter := store.LogFilter{
-		StartTime:  startTime,
-		EndTime:    endTime,
-		ProjectKey: strings.TrimSpace(query.Get("project_key")),
-		NodeKey:    strings.TrimSpace(query.Get("node_key")),
-		Level:      level,
-		Channel:    strings.TrimSpace(query.Get("channel")),
-		ErrorScene: strings.TrimSpace(query.Get("error_scene")),
-		RequestIP:  requestIP,
-		Member:     strings.TrimSpace(query.Get("member")),
-		SessionID:  strings.TrimSpace(query.Get("session_id")),
-		Limit:      limit,
+		StartTime:     startTime,
+		EndTime:       endTime,
+		ProjectKey:    strings.TrimSpace(query.Get("project_key")),
+		NodeKey:       strings.TrimSpace(query.Get("node_key")),
+		Level:         level,
+		Channel:       strings.TrimSpace(query.Get("channel")),
+		ErrorScene:    strings.TrimSpace(query.Get("error_scene")),
+		RequestIP:     requestIP,
+		RequestMethod: strings.TrimSpace(query.Get("request_method")),
+		RequestHost:   strings.TrimSpace(query.Get("request_host")),
+		RequestURI:    strings.TrimSpace(query.Get("request_uri")),
+		Member:        strings.TrimSpace(query.Get("member")),
+		SessionID:     strings.TrimSpace(query.Get("session_id")),
+		Limit:         limit,
 	}
 	if cursor := strings.TrimSpace(query.Get("cursor")); cursor != "" {
 		value, err := decodeCursor(cursor)
@@ -638,16 +658,20 @@ func (h *Handler) parseLogFilters(r *http.Request, requireTime bool) (parsedLogF
 	return parsedLogFilter{
 		Value: filter,
 		Form: logFilterForm{
-			StartTime:  startValue,
-			EndTime:    endValue,
-			ProjectKey: filter.ProjectKey,
-			NodeKey:    filter.NodeKey,
-			Level:      filter.Level,
-			Channel:    filter.Channel,
-			ErrorScene: filter.ErrorScene,
-			RequestIP:  filter.RequestIP,
-			Member:     filter.Member,
-			SessionID:  filter.SessionID,
+			StartTime:     startValue,
+			EndTime:       endValue,
+			ProjectKey:    filter.ProjectKey,
+			NodeKey:       filter.NodeKey,
+			Level:         filter.Level,
+			Channel:       filter.Channel,
+			ErrorScene:    filter.ErrorScene,
+			RequestIP:     filter.RequestIP,
+			RequestMethod: filter.RequestMethod,
+			RequestHost:   filter.RequestHost,
+			RequestURI:    filter.RequestURI,
+			Member:        filter.Member,
+			SessionID:     filter.SessionID,
+			Limit:         limit,
 		},
 	}, nil
 }
@@ -692,8 +716,14 @@ func buildLogsPageURL(form logFilterForm, cursor string, trail string) string {
 	setIfNotEmpty(values, "channel", form.Channel)
 	setIfNotEmpty(values, "error_scene", form.ErrorScene)
 	setIfNotEmpty(values, "request_ip", form.RequestIP)
+	setIfNotEmpty(values, "request_method", form.RequestMethod)
+	setIfNotEmpty(values, "request_host", form.RequestHost)
+	setIfNotEmpty(values, "request_uri", form.RequestURI)
 	setIfNotEmpty(values, "member", form.Member)
 	setIfNotEmpty(values, "session_id", form.SessionID)
+	if form.Limit > 0 {
+		values.Set("limit", strconv.Itoa(form.Limit))
+	}
 	setIfNotEmpty(values, "cursor", cursor)
 	setIfNotEmpty(values, "trail", trail)
 	return "/admin/logs?" + values.Encode()
@@ -703,6 +733,15 @@ func setIfNotEmpty(values url.Values, key, value string) {
 	if value != "" {
 		values.Set(key, value)
 	}
+}
+
+// splitRequestURL 把完整请求 URL 拆分为主机和路径（含查询串），用于列表展示。
+func splitRequestURL(raw string) (host, uri string) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", raw
+	}
+	return parsed.Host, parsed.RequestURI()
 }
 
 func encodeCursor(item store.LogSummary) (string, error) {
