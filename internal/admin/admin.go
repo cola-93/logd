@@ -141,7 +141,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 func (h *Handler) authenticatedPage(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := h.sessionNonce(r); !ok {
-			http.Redirect(w, r, h.loginPath, http.StatusSeeOther)
+			// 登录入口是保密的：会话失效时不跳转，直接返回 404，避免泄露入口路径。
+			http.NotFound(w, r)
 			return
 		}
 		next(w, r)
@@ -241,7 +242,7 @@ func (h *Handler) loginAPI(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) logoutPage(w http.ResponseWriter, r *http.Request) {
 	nonce, ok := h.sessionNonce(r)
 	if !ok {
-		http.Redirect(w, r, h.loginPath, http.StatusSeeOther)
+		http.NotFound(w, r)
 		return
 	}
 	if !h.validCSRF(r, nonce) {
@@ -249,7 +250,9 @@ func (h *Handler) logoutPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.clearSession(w, r)
-	http.Redirect(w, r, h.loginPath, http.StatusSeeOther)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = fmt.Fprint(w, "<!doctype html><meta charset=\"utf-8\"><title>已退出登录</title><p>已退出登录。</p>")
 }
 
 func (h *Handler) logoutAPI(w http.ResponseWriter, r *http.Request) {
