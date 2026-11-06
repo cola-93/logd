@@ -956,7 +956,7 @@ body.is-log-dragging .logs-data-table tbody tr {
 .col-member { width: 120px; }
 .col-session { width: 130px; }
 .col-scene { width: 110px; }
-.col-msg { /* Flex fill */ }
+.col-msg { width: 240px; }
 .col-host { width: 160px; }
 .col-uri { width: 240px; }
 .col-ip { width: 120px; }
